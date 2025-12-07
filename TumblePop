@@ -12,7 +12,6 @@
 using namespace sf;
 using namespace std;
 
-// Game constants
 int SCREEN_X = 1152;
 int SCREEN_Y = 896;
 int CELL_SIZE = 64;
@@ -22,105 +21,100 @@ float GRAVITY = 1.0f;
 float JUMP_STRENGTH = -20.0f;
 float TERMINAL_VELOCITY = 20.0f;
 
-// Enums
 enum EnemyType { GHOST, SKELETON, INVISIBLE_MAN, CHELNOV, MINION };
 enum GameStateEnum { MENU, LEVEL1, LEVEL2, BOSS_LEVEL, WIN, GAMEOVER, PAUSED };
 enum PowerUpType { SPEED, RANGE, POWER, EXTRA_LIFE, BALL_BREAKER };
 
-// Structures
+
+
+
+
 struct Enemy {
-    float x, y;
-    float velocityX, velocityY;
-    EnemyType type;
-    bool active;
-    bool stunned;
-    float stunnedTimer;
-    int direction;
-    float moveTimer;
-    float jumpTimer;
-    float shootTimer;
-    bool canShoot;
-    bool invisible;
-    float invisTimer;
-    float teleportTimer;
-    bool onGround;
+         float x, y;//grid par kya position hai
+         float velocityX, velocityY;//speed+gravity
+         EnemyType type;//if it is minion or shoooter or tank etc
+          bool active;// enemy active  ya inactive hai 
+           bool stunned;//move kar sakta ya nahi
+           float stunnedTimer;// kitni dair tak nahi move kar sakta
+           int direction;// 1 ho toh right face kar raha -1 toh left
+           float moveTimer;// move karny ky patterns ko control karta
+           float jumpTimer;// enemy kab jump karta 
+           float shootTimer;//kab tak agli shot mar sakty
+           bool canShoot;// yh enemy shoot kar sakta ya nahi
+            bool invisible;// yh enemy invisible ho sakta ya nahi
+           float invisTimer;//kab tak invisible ho ga
+            float teleportTimer;//teleports ky darmian ka time
+          bool onGround;//ground par hai ya nahi
 };
 
 struct Projectile {
-    float x, y;
-    float velocityX, velocityY;
-    bool active;
-    int bounces;
-    bool rollingOnGround;
-    float rollDirection;
-    EnemyType enemyType;
-    bool isBallBreaker;
-    int splitCount;
+           float x, y;//bullet ki position
+           float velocityX, velocityY;//bullet ki speed aur direction
+           bool active;//agar false hai toh projectile ko update nahi karna
+           int bounces;//kitni dafa bounce kar sakti
+          bool rollingOnGround;//agar true hai toh woh fly nahi balky floor par roll karay gi
+         float rollDirection;//kis direction main roll karay ga
+    EnemyType enemyType;//kis enemy ny yh projectile banaya
+          bool isBallBreaker;//kya yh aisa projectile hai jo eney shots ko destroy kar sakta
+          int splitCount;//kitni bullets main split ho sakta
 };
 
 struct EnemyProjectile {
-    float x, y;
-    float velocityX, velocityY;
-    bool active;
+            float x, y;
+         float velocityX, velocityY;
+           bool active;
 };
 
 struct PowerUp {
-    float x, y;
+           float x, y;
     PowerUpType type;
-    bool active;
-    float timer;
+           bool active;
+           float timer;
 };
 
 struct Player {
-    float x, y;
-    float velocityY;
-    bool onGround;
-    int lives;
-    int health;
-    int score;
-    bool isYellow;
-    float baseSpeed;
-    float speed;
-    float baseVacuumRange;
-    float vacuumRange;
-    float vacuumPower;
-    int maxCapture;
-    int capturedCount;
-    Enemy* captured;
-    float vacuumAngle;
-    bool vacuuming;
-    bool facingRight;
-    int combo;
-    float comboTimer;
-    float speedBoostTimer;
-    float rangeBoostTimer;
-    float powerBoostTimer;
-    int enemiesDefeated;
-    int damageTaken;
-    float animationTimer;
-    int currentFrame;
-    bool isMoving;
-    bool onCloudPlatform;
+         float x, y;
+         float velocityY;
+         bool onGround;
+        int lives;//lives left
+          int health;//kitny hits ky baad life jai gi
+         int score;//kitna score kiya hai
+          bool isYellow;//kis mode par hai
+        float baseSpeed;//default
+        float speed;//boosts ky baad wali speed
+        float baseVacuumRange;//normal vaccume ky range
+         float vacuumRange;//boosts ky baad range
+        float vacuumPower;//uski strength
+         int maxCapture;//maximun kitny enemies capture ho sakty
+        int capturedCount;//abhi kitny captured hain
+        Enemy* captured;//captured enemies ki array
+         float vacuumAngle;//vaccume kahan face kar raha hai
+         bool vacuuming;//active hai ya nahi
+         bool facingRight;//kahan face kar raha player
+         int combo;//combo ka count
+         float comboTimer;//combo kitny timr baad katam ho ga
+        float speedBoostTimer;// kitni dair spped boost ho gi
+         float rangeBoostTimer;//kitni dair vaccume ki range barhy gi
+         float powerBoostTimer;//kitni dair power strong ho gi
+          int enemiesDefeated;//kitny enemies ko defeat kiya
+         int damageTaken;
+         float animationTimer;//character ky frame to change karna
+         int currentFrame;//konsa frame banana
+         bool isMoving;
+           bool onCloudPlatform;
     
-    Player() {
-        captured = new Enemy[3];
-        reset(true);
-    }
-    
-    ~Player() {
-        delete[] captured;
-    }
-    
+    Player(){captured = new Enemy[3];
+        reset(true);}
+    ~Player() {delete[] captured;}
+    //nai game start honi hai toh sab kuch reset karna hai
     void reset(bool newGame) {
         x = 300;
         y = 100;
         velocityY = 0;
         onGround = false;
         onCloudPlatform = false;
-        if (newGame) {
-            lives = 3;
-            score = 0;
-        }
+        if (newGame) {lives = 3;
+            score = 0;}
         health = 3;
         capturedCount = 0;
         vacuumAngle = 0;
@@ -136,106 +130,80 @@ struct Player {
         maxCapture = 3;
         animationTimer = 0;
         currentFrame = 0;
-        isMoving = false;
-    }
-};
+        isMoving = false;}};
 
 struct Boss {
-    float x, y;
-    int health;
-    int maxHealth;
-    bool active;
-    float shootTimer;
-    bool followMode;
-    bool angryMode;
-    float tentacleTimer;
-    int tentacleCount;
-    float* tentacleX;
-    float* tentacleY;
-    float* tentacleDuration;
-    bool* tentacleActive;
-    
-    Boss() {
+         float x, y;
+         int health;//health waly points
+          int maxHealth;//kitni ho sakty
+          bool active;//fight shuru hui ya nai
+           float shootTimer;//boss kan tak shoot karay ga projectiles
+         bool followMode;//players ko follow kar raha boss ya nahi
+        bool angryMode;//health kam hoti toh agressive ho jata
+        float tentacleTimer;//kab tak attack kar sakta
+        int tentacleCount;//kitny tentacles active hain
+        float* tentacleX;
+         float* tentacleY;
+         float* tentacleDuration;
+          bool* tentacleActive;
+   Boss() {
         tentacleX = nullptr;
         tentacleY = nullptr;
         tentacleDuration = nullptr;
         tentacleActive = nullptr;
-        reset();
-    }
+        reset();}
     
-    ~Boss() {
-        cleanup();
-    }
+    ~Boss(){cleanup();}
     
-    void reset() {
+         void reset() {//boss ki original halatw wapis
         active = false;
         health = 10;
         maxHealth = 10;
         followMode = false;
         angryMode = false;
         tentacleCount = 0;
-        
-        cleanup();
+         cleanup();
         tentacleX = new float[5];
         tentacleY = new float[5];
         tentacleDuration = new float[5];
         tentacleActive = new bool[5];
-        
-        for (int i = 0; i < 5; i++) {
-            tentacleActive[i] = false;
-        }
-    }
+         for (int i = 0; i < 5; i++) {
+            tentacleActive[i] = false;}}
     
-    void cleanup() {
+        void cleanup() {//agar wapis jana hai toh sari arrays reset karni
         if (tentacleX) delete[] tentacleX;
         if (tentacleY) delete[] tentacleY;
         if (tentacleDuration) delete[] tentacleDuration;
-        if (tentacleActive) delete[] tentacleActive;
-    }
-};
+           if (tentacleActive) delete[] tentacleActive;}};
 
 struct CloudPlatform {
-    float x, y;
-    float velocityY;
-    bool hasProducer;
-    bool isPlatform;
-    bool visible;
-    
-    CloudPlatform() {
+          float x, y;//position
+          float velocityY;//verticle movement
+          bool hasProducer;//sirf jab minion pass ho ga toh kaam karay ga 
+         bool isPlatform;//player khara ho sakta ya nahi
+           bool visible;//platform nazar aa rah ya nahi
+      CloudPlatform() {
         x = 0;
         y = 0;
         velocityY = 1.0f;
         hasProducer = false;
         isPlatform = false;
-        visible = false;
-    }
-    
-    void init(float posX, float posY) {
+        visible = false;}
+           void init(float posX, float posY) {
         x = posX;
         y = posY;
         velocityY = 1.0f;
         hasProducer = true;
         isPlatform = false;
-        visible = true;
-    }
+        visible = true;}
     
-    void update(float deltaTime, Enemy* enemies, int enemyCount) {
-        if (!hasProducer) {
-            // Platform becomes solid when producer destroyed
-            isPlatform = true;
-            return;
-        }
-        
-        // Move up and down
-        y += velocityY * deltaTime * 30;
-        
-        // Reverse direction at boundaries
-        if (y > 500 || y < 200) {
-            velocityY *= -1;
-        }
-        
-        // Check if producer (minion) is still alive
-        bool producerAlive = false;
+         void update(float deltaTime, Enemy* enemies, int enemyCount) {
+        if (!hasProducer) {//jab minion mar jai toh platform solid ho jata
+            isPlatform = true; return;}
+        y=y+ velocityY * deltaTime * 30;//upar neechay move karna 
+        if (y > 500 || y < 200) {//boundries ko touch karay toh wapis ana chahiyay usko 
+            velocityY *= -1; }
+           bool producerAlive = false;//minion zinda hai ya nahi
         for (int i = 0; i < enemyCount; i++) {
             if (enemies[i].active && enemies[i].type == MINION) {
                 float dx = enemies[i].x - x;
@@ -243,149 +211,108 @@ struct CloudPlatform {
                 float distance = sqrt(dx*dx + dy*dy);
                 if (distance < 100) {
                     producerAlive = true;
-                    break;
-                }
-            }
-        }
-        
-        if (!producerAlive) {
+                    break;}}}
+                if (!producerAlive) {
             hasProducer = false;
-            isPlatform = true;
-        }
-    }
+            isPlatform = true;}}
     
-    void draw(RenderWindow& window) {
+             void draw(RenderWindow& window) {
         if (!visible) return;
         
         RectangleShape platform(Vector2f(200, 30));
         if (hasProducer) {
-            platform.setFillColor(Color(200, 200, 255, 150)); // Semi-transparent
-        } else {
-            platform.setFillColor(Color(150, 150, 255, 200)); // More solid
+            platform.setFillColor(Color(200, 200, 255, 150)); //minion zinda hai toh platform semi solid ho ga
+} 
+        else {
+            platform.setFillColor(Color(150, 150, 255, 200)); //mar gaya toh solid
         }
         platform.setPosition(x - 100, y);
         window.draw(platform);
-        
-        // Draw producer indicator
-        if (hasProducer) {
+        if (hasProducer) {//agar zinda hai toh usko identify karna red circle sy
             CircleShape producer(15);
             producer.setFillColor(Color(255, 100, 100));
             producer.setPosition(x - 15, y - 40);
-            window.draw(producer);
-        }
-    }
+            window.draw(producer);}}
     
-    bool checkCollisionWithPlayer(float px, float py, float pw, float ph) {
-        if (!isPlatform && !hasProducer) return false;
-        
+           bool checkCollisionWithPlayer(float px, float py, float pw, float ph) {
+        if (!isPlatform && !hasProducer) return     false;//agar platform solid hai aur producer zinda hai agar donoun false toh collision nahi ho sakti player ky sath
+        //check karna agar player aur platform ka rectangle collide karta toh hn collision ho gi
         return (px < x + 100 && px + pw > x - 100 && 
-                py + ph > y && py < y + 30);
-    }
-};
+                py + ph > y && py < y + 30);}};
 
-struct LeaderboardEntry {
-    string name;
-    int score;
-};
+struct LeaderboardEntry {//leader board par player ka naam aur uska score
+          string name;
+          int score;};
 
-// Game State struct (NO GLOBAL VARIABLES)
 struct GameStateData {
-    Enemy* enemies;
-    int enemyCount;
-    int enemyCapacity;
+           Enemy* enemies;//level ky saray enemies ki array
+            int enemyCount;//zinda enemies
+            int enemyCapacity;//kitny capture kar skty
+            Projectile* projectiles;//projrctiles ki array
+            int projectileCount;//kitny active hain
+            int projectileCapacity;//kitny ho sakty
+            EnemyProjectile* enemyProjectiles;//enemi ky projectile ki array
+           int enemyProjectileCount;//kitny ho gai huy
+           int enemyProjectileCapacity;//kitny ho sakty
+            PowerUp* powerups;//boosts ki array
+           int powerupCount;//kitny use ho rahy
+           int powerupCapacity;//kitny ho sakty
+            Boss boss;//aik time par aik boss ho sakta
+           Player player;//player ki information store karta
+            CloudPlatform cloudPlatform;//platform ko handle karta
+            GameStateEnum currentState;//level ki info
+            int currentLevel;//level no
+              char** levelGrid;//level ka map
+             float enemySpawnTimer;//agla enemy kab spawn kar sakta
+             int totalEnemiesInLevel;//kitny enemies rehty
+           float penaltyScore;//kitni penalties apply hui
+              float slideTimer;//duration
+             bool isSliding;//state slide honay time
     
-    Projectile* projectiles;
-    int projectileCount;
-    int projectileCapacity;
-    
-    EnemyProjectile* enemyProjectiles;
-    int enemyProjectileCount;
-    int enemyProjectileCapacity;
-    
-    PowerUp* powerups;
-    int powerupCount;
-    int powerupCapacity;
-    
-    Boss boss;
-    Player player;
-    CloudPlatform cloudPlatform;
-    GameStateEnum currentState;
-    int currentLevel;
-    char** levelGrid;
-    float enemySpawnTimer;
-    int totalEnemiesInLevel;
-    float penaltyScore;
-    
-    // Sliding mechanics
-    float slideTimer;
-    bool isSliding;
-    
-    GameStateData() {
-        enemyCapacity = 10;
-        enemyCount = 0;
-        enemies = new Enemy[enemyCapacity];
-        
-        projectileCapacity = 20;
-        projectileCount = 0;
-        projectiles = new Projectile[projectileCapacity];
-        
-        enemyProjectileCapacity = 10;
-        enemyProjectileCount = 0;
-        enemyProjectiles = new EnemyProjectile[enemyProjectileCapacity];
-        
-        powerupCapacity = 5;
-        powerupCount = 0;
-        powerups = new PowerUp[powerupCapacity];
-        
-        levelGrid = nullptr;
-        currentState = MENU;
-        currentLevel = 1;
-        enemySpawnTimer = 0;
-        totalEnemiesInLevel = 0;
-        penaltyScore = 0;
-        slideTimer = 0;
-        isSliding = false;
-        
-        initArrays();
-    }
-    
-    ~GameStateData() {
-        cleanup();
-    }
-    
-    void initArrays() {
-        for (int i = 0; i < projectileCapacity; i++) {
+            GameStateData() {//array allocate karta aur uski values ko initialise karnta sab kuch decide karts kitna ho ga aur kya ho ga
+             enemyCapacity = 10;
+              enemyCount = 0;
+             enemies = new Enemy[enemyCapacity];        
+              projectileCapacity = 20;
+              projectileCount = 0;
+              projectiles = new        Projectile[projectileCapacity];       
+              enemyProjectileCapacity = 10;
+              enemyProjectileCount = 0;
+              enemyProjectiles = new EnemyProjectile[enemyProjectileCapacity];
+              powerupCapacity = 5;
+              powerupCount = 0;
+              powerups = new PowerUp[powerupCapacity];
+             levelGrid = nullptr;
+              currentState = MENU;
+              currentLevel = 1;
+              enemySpawnTimer = 0;
+              totalEnemiesInLevel = 0;
+              penaltyScore = 0;
+               slideTimer = 0;
+              isSliding = false;
+               initArrays();}
+    ~GameStateData() { cleanup();}
+             void initArrays() {
+        for (int i = 0; i < projectileCapacity; i++) {//sets all initial abojects to inactive
             projectiles[i].active = false;
             projectiles[i].isBallBreaker = false;
-            projectiles[i].splitCount = 0;
-        }
-        
-        for (int i = 0; i < enemyProjectileCapacity; i++) {
-            enemyProjectiles[i].active = false;
-        }
-        
+            projectiles[i].splitCount = 0;}
+        for (int i = 0; i < enemyProjectileCapacity; i++) {enemyProjectiles[i].active = false;  }
         for (int i = 0; i < powerupCapacity; i++) {
-            powerups[i].active = false;
-        }
-    }
+            powerups[i].active = false;}}
     
-    void cleanup() {
+        void cleanup() {
         delete[] enemies;
         delete[] projectiles;
         delete[] enemyProjectiles;
         delete[] powerups;
-        
-        boss.cleanup();
-        
+       boss.cleanup();
         if (levelGrid) {
             for (int i = 0; i < HEIGHT; i++)
                 delete[] levelGrid[i];
-            delete[] levelGrid;
-        }
-    }
-};
+            delete[] levelGrid;}}};
 
-// Function prototypes
+//saray ky saray functions jo ky puri game main use huwy hain aur unmain kya kya chahiyay unki data types takay bar bar na likhni parhain
 void initLevel(char** lvl, int level);
 void displayLevel(RenderWindow& window, char** lvl, Texture& bgTex, Sprite& bgSprite, Texture& blockTexture, Sprite& blockSprite);
 void playerPhysics(Player& p, char** lvl, CloudPlatform& cloudPlatform, float deltaTime, GameStateData& gameState);
@@ -417,28 +344,35 @@ void applyPenalty(GameStateData& gameState, int amount, string reason);
 void updateSlidingMechanics(GameStateData& gameState, char** lvl, float deltaTime);
 bool checkPlatformCollision(float px, float py, float pw, float ph, char** lvl);
 
-// Function implementations
-void resizeEnemyArray(GameStateData& gameState) {
-    int newCapacity = gameState.enemyCapacity * 2;
-    Enemy* newArr = new Enemy[newCapacity];
+
+
+
+
+
+
+
+
+void resizeEnemyArray(GameStateData& gameState) {//enemies wali array fill ho jai toh size barhana hai uska
+          int newCapacity = gameState.enemyCapacity * 2;//capacity ko double kar dena
+    Enemy* newArr = new Enemy[newCapacity];//aur bari array ban jai gi
+         for (int i = 0; i < gameState.enemyCount; i++)
+         newArr[i] = gameState.enemies[i];//pichli array waly enemies ko ismain dalna 
     
-    for (int i = 0; i < gameState.enemyCount; i++)
-        newArr[i] = gameState.enemies[i];
+        delete[] gameState.enemies;//pichli array delete kardeni
+        gameState.enemies = newArr;
+        gameState.enemyCapacity = newCapacity;}
     
-    delete[] gameState.enemies;
-    gameState.enemies = newArr;
-    gameState.enemyCapacity = newCapacity;
-}
+    
 
 void resizeProjectileArray(GameStateData& gameState) {
-    int newCapacity = gameState.projectileCapacity * 2;
+    int newCapacity = gameState.projectileCapacity * 2;//uusi trah projectile array ko bara kiya uska size 2 sy multiply karwa kar 
     Projectile* newArr = new Projectile[newCapacity];
-    
+ //nai aray banai usmain pichla data store kiya aur purani delete kardi  
     for (int i = 0; i < gameState.projectileCount; i++)
         newArr[i] = gameState.projectiles[i];
     
     for (int i = gameState.projectileCount; i < newCapacity; i++)
-        newArr[i].active = false;
+        newArr[i].active = false;//nai slots ko inactive kardiya
     
     delete[] gameState.projectiles;
     gameState.projectiles = newArr;
@@ -447,282 +381,218 @@ void resizeProjectileArray(GameStateData& gameState) {
 
 void addEnemy(GameStateData& gameState, Enemy newEnemy) {
     if (gameState.enemyCount >= gameState.enemyCapacity)
-        resizeEnemyArray(gameState);
+        resizeEnemyArray(gameState);//agar array fill hai toh resize karna upar waly function sy aur nai enemy ko daldena count main plus karky
     
     gameState.enemies[gameState.enemyCount++] = newEnemy;
 }
 
-void addProjectile(GameStateData& gameState, Projectile newProj) {
-    for (int i = 0; i < gameState.projectileCount; i++) {
-        if (!gameState.projectiles[i].active) {
-            gameState.projectiles[i] = newProj;
-            return;
-        }
-    }
-    
-    if (gameState.projectileCount >= gameState.projectileCapacity)
-        resizeProjectileArray(gameState);
-    
-    gameState.projectiles[gameState.projectileCount++] = newProj;
-}
 
-void initLevel(char** lvl, int level) {
+
+void addProjectile(GameStateData& gameState, Projectile newProj) {//nai projectile ko array main add karti
+           for (int i = 0; i < gameState.projectileCount; i++) {
+          if (!gameState.projectiles[i].active) {//koi bhi projectile ki slot khali ya inactive ho toh usmain store karni
+            gameState.projectiles[i] = newProj;
+            return;}}
+    
+           if (gameState.projectileCount >= gameState.projectileCapacity)
+        resizeProjectileArray(gameState);//agar memory full ho toh resize karna
+    gameState.projectiles[gameState.projectileCount++] = newProj;}
+    
+
+void initLevel(char** lvl, int level) {//har level ka apna layout ho
     for (int i = 0; i < HEIGHT; i++)
         for (int j = 0; j < WIDTH; j++)
             lvl[i][j] = ' ';
 
-    if (level == 1) {
+    if (level == 1) {//level 1 ka layout
         for (int j = 0; j < WIDTH; j++)
-            lvl[HEIGHT-1][j] = '#';
-        
+            lvl[HEIGHT-1][j] = '#';//bottom par ground
         for (int j = 2; j < 16; j++)
-            lvl[10][j] = '#';
-        
+            lvl[10][j] = '#';//platform 2 sy 15 tak
         for (int j = 3; j < 15; j++)
-            lvl[7][j] = '#';
-        
+            lvl[7][j] = '#';//platform
         for (int j = 2; j < 8; j++)
-            lvl[4][j] = '#';
+            lvl[4][j] = '#';//2 seperate platforms row 4 par yh pehla hai aur agli loop wala 2 
         for (int j = 10; j < 16; j++)
             lvl[4][j] = '#';
-        
-        // Add some soft tiles for sliding mechanics
         for (int j = 5; j < 7; j++)
-            lvl[9][j] = 'S'; // Soft tile
-    }
+            lvl[9][j] = 'S'; // Soft tiles add karni
+             }
+             
     else if (level == 2) {
         for (int j = 0; j < WIDTH; j++)
-            lvl[HEIGHT-1][j] = '#';
-        
-        // Slanted platforms with sliding mechanics
+            lvl[HEIGHT-1][j] = '#';//ground
         for (int j = 1; j < 8; j++) {
             lvl[11 - j/2][j] = '#';
-            if (j % 2 == 0) lvl[11 - j/2][j] = 'S'; // Every other is soft
+            if (j % 2 == 0) lvl[11 - j/2][j] = 'S';//rising slope banai
         }
         for (int j = 10; j < 17; j++) {
             lvl[11 - (j-10)/2][j] = '#';
-            if (j % 2 == 0) lvl[11 - (j-10)/2][j] = 'S';
+            if (j % 2 == 0) lvl[11 - (j-10)/2][j] = 'S';//dubara sy rising slope
         }
         
         for (int j = 5; j < 13; j++)
-            lvl[3][j] = '#';
-    }
+            lvl[3][j] = '#';}
+   
+   
     else if (level == 3) {
         for (int j = 0; j < WIDTH; j++)
-            lvl[HEIGHT-1][j] = '#';
-        
+            lvl[HEIGHT-1][j] = '#';//ground
         for (int j = 4; j < 14; j++)
-            lvl[HEIGHT-5][j] = '#';
-        
+            lvl[HEIGHT-5][j] = '#';//platform
         for (int j = 1; j < 5; j++)
-            lvl[HEIGHT-8][j] = '#';
+            lvl[HEIGHT-8][j] = '#';//row 8 ka 1 platform
         for (int j = 13; j < 17; j++)
-            lvl[HEIGHT-8][j] = '#';
-        
-        // Soft tiles in boss level
+            lvl[HEIGHT-8][j] = '#';//row 8 par 2 platform
         for (int j = 6; j < 12; j += 2)
-            lvl[HEIGHT-5][j] = 'S';
+            lvl[HEIGHT-5][j] = 'S';//sliding tiles
     }
 }
 
-void displayLevel(RenderWindow& window, char** lvl, Texture& bgTex, Sprite& bgSprite, Texture& blockTexture, Sprite& blockSprite, Texture& softTexture, Sprite& softSprite) {
-    window.draw(bgSprite);
-    
-    for (int i = 0; i < HEIGHT; i++) {
-        for (int j = 0; j < WIDTH; j++) {
-            if (lvl[i][j] == '#') {
-                blockSprite.setPosition(j * CELL_SIZE, i * CELL_SIZE);
-                window.draw(blockSprite);
-            }
+void displayLevel(RenderWindow& window, char** lvl, Texture& bgTex, Sprite& bgSprite, Texture& blockTexture, Sprite& blockSprite, Texture& softTexture, Sprite& softSprite) {//sari tiles draw karta
+    window.draw(bgSprite);//background banata
+        for (int i = 0; i < HEIGHT; i++) {
+            for (int j = 0; j < WIDTH; j++) {
+               if (lvl[i][j] == '#') {
+                blockSprite.setPosition(j * CELL_SIZE, i * CELL_SIZE);//agar tile # hai toh hard block
+                window.draw(blockSprite);}
             else if (lvl[i][j] == 'S') {
-                softSprite.setPosition(j * CELL_SIZE, i * CELL_SIZE);
-                window.draw(softSprite);
-            }
-        }
-    }
-}
+                softSprite.setPosition(j * CELL_SIZE, i * CELL_SIZE);//agar s hai toh sliding tile
+            window.draw(softSprite);}}}}
+
+
 
 void updateSlidingMechanics(GameStateData& gameState, char** lvl, float deltaTime) {
-    if (gameState.currentLevel != 2) return;
+         if (gameState.currentLevel != 2) return;//slide only for level 2    
     
-    Player& p = gameState.player;
+        Player& p = gameState.player;
+         int row = (int)(p.y + 102) / CELL_SIZE;//dekhna kay player slanted platform par hai ya nahi toh pehly usky neechay wali tile dekhain gy ky kis row aur column par hai
+         int leftCol = (int)p.x / CELL_SIZE;
+        int rightCol = (int)(p.x + 96) / CELL_SIZE;
     
-    // Check if player is on a slanted platform
-    int row = (int)(p.y + 102) / CELL_SIZE;
-    int leftCol = (int)p.x / CELL_SIZE;
-    int rightCol = (int)(p.x + 96) / CELL_SIZE;
-    
-    bool onSlanted = false;
+          bool onSlanted = false;
     for (int col = leftCol; col <= rightCol; col++) {
         if (col >= 0 && col < WIDTH && row >= 0 && row < HEIGHT) {
             if (lvl[row][col] == 'S') {
-                onSlanted = true;
-                break;
-            }
-        }
-    }
+                onSlanted = true;//agar koi bhi tile s type hai matlab slanted hai toh true kardena
+                break;}}}
     
     if (onSlanted && p.onGround) {
         gameState.isSliding = true;
         gameState.slideTimer += deltaTime;
-        
-        // Apply sliding velocity based on angle
-        p.x += 3.0f * deltaTime * 60; // Slide to the right on slanted platforms
-        
-        // Visual feedback
-        if ((int)(gameState.slideTimer * 10) % 2 == 0) {
-            p.x += 1; // Small shake effect
-        }
-    } else {
-        gameState.isSliding = false;
-        gameState.slideTimer = 0;
-    }
-}
+
+        p.x += 3.0f * deltaTime * 60; // player ki slide karay ga
+        if ((int)(gameState.slideTimer * 10) % 2 == 0) {p.x += 1; }}
+     else {gameState.isSliding = false;
+        gameState.slideTimer = 0;//matlab sliding tile par nahi khara toh slide nahi ho ga
+ }}
 
 bool checkPlatformCollision(float px, float py, float pw, float ph, char** lvl) {
-    int bottomRow = (int)(py + ph) / CELL_SIZE;
-    int leftCol = (int)px / CELL_SIZE;
-    int rightCol = (int)(px + pw) / CELL_SIZE;
-    int midCol = (int)(px + pw/2) / CELL_SIZE;
+           int bottomRow = (int)(py + ph) / CELL_SIZE;
+          int leftCol = (int)px / CELL_SIZE;
+           int rightCol = (int)(px + pw) / CELL_SIZE;
+            int midCol = (int)(px + pw/2) / CELL_SIZE;
     
-    if (bottomRow >= 0 && bottomRow < HEIGHT) {
-        if ((leftCol >= 0 && leftCol < WIDTH && (lvl[bottomRow][leftCol] == '#' || lvl[bottomRow][leftCol] == 'S')) ||
+           if (bottomRow >= 0 && bottomRow < HEIGHT) {//dekhna kay har tile inbound hai ya nahi ... like column solid block par ho ya slanter par
+           if ((leftCol >= 0 && leftCol < WIDTH && (lvl[bottomRow][leftCol] == '#' || lvl[bottomRow][leftCol] == 'S')) ||
             (rightCol >= 0 && rightCol < WIDTH && (lvl[bottomRow][rightCol] == '#' || lvl[bottomRow][rightCol] == 'S')) ||
-            (midCol >= 0 && midCol < WIDTH && (lvl[bottomRow][midCol] == '#' || lvl[bottomRow][midCol] == 'S'))) {
-            return true;
-        }
-    }
-    return false;
-}
+            (midCol >= 0 && midCol < WIDTH && (lvl[bottomRow][midCol] == '#' || lvl[bottomRow][midCol] == 'S'))) {return true;}}
+             return false;}
 
 void playerPhysics(Player& p, char** lvl, CloudPlatform& cloudPlatform, float deltaTime, GameStateData& gameState) {
-    // Apply sliding mechanics first
-    updateSlidingMechanics(gameState, lvl, deltaTime);
+        updateSlidingMechanics(gameState, lvl, deltaTime);//sabsy pehly uska slide direction aur movement dekhni
+        if (!p.onGround && !p.onCloudPlatform)
+        p.velocityY = p.velocityY + GRAVITY;//agar player kisi cheez ya ground par nahi hai toh uspar gravity apply ho gi takay woh neechay jai
+        if (p.velocityY > TERMINAL_VELOCITY) 
+        p.velocityY = TERMINAL_VELOCITY;//player bas neeechay hi na jata jai toh ham uski limit kar detay
+        p.y =p.y + p.velocityY;//usko neechay bhejta
+       
+       p.onGround = false;//reset karo aur phir sy recalculate 
+       p.onCloudPlatform = false;
     
-    // Gravity
-    if (!p.onGround && !p.onCloudPlatform)
-        p.velocityY += GRAVITY;
-    
-    if (p.velocityY > TERMINAL_VELOCITY) 
-        p.velocityY = TERMINAL_VELOCITY;
-    
-    p.y += p.velocityY;
-    
-    // Reset ground state
-    p.onGround = false;
-    p.onCloudPlatform = false;
-    
-    // Check cloud platform collision
-    if (cloudPlatform.checkCollisionWithPlayer(p.x, p.y, 96, 102)) {
+        if (cloudPlatform.checkCollisionWithPlayer(p.x, p.y, 96, 102)) {//agar player platform par hai toh usko usky upar khara karna aur girny nahi dena
         p.onCloudPlatform = true;
         p.y = cloudPlatform.y - 102;
         p.velocityY = 0;
         
-        // If platform has producer, player can fall through
-        if (cloudPlatform.hasProducer) {
+        if (cloudPlatform.hasProducer) {//agar platform par minion hai toh player platform par nahi khara ho sakta aur gir jai ga
             p.velocityY += GRAVITY;
-            p.onCloudPlatform = false;
-        }
-    }
+            p.onCloudPlatform = false;}}
     
-    // Check regular platform collision
-    if (checkPlatformCollision(p.x, p.y, 96, 102, lvl)) {
+    if (checkPlatformCollision(p.x, p.y, 96, 102, lvl)) {//agar player ground par hai toh tile ky sath colision dekhni aur usko tile ky upar khara karwana
         p.onGround = true;
         int bottomRow = (int)(p.y + 102) / CELL_SIZE;
         p.y = bottomRow * CELL_SIZE - 102;
-        p.velocityY = 0;
-    }
+        p.velocityY = 0;}
+   
+        int bottomRow = (int)(p.y + 102) / CELL_SIZE;//dekhna kay kis grid tile ky upar hai player
+         int leftCol = (int)p.x / CELL_SIZE;
+         int rightCol = (int)(p.x + 96) / CELL_SIZE;
     
-    // Check soft tile sinking
-    int bottomRow = (int)(p.y + 102) / CELL_SIZE;
-    int leftCol = (int)p.x / CELL_SIZE;
-    int rightCol = (int)(p.x + 96) / CELL_SIZE;
-    
-    for (int col = leftCol; col <= rightCol; col++) {
+         for (int col = leftCol; col <= rightCol; col++) {
         if (col >= 0 && col < WIDTH && bottomRow >= 0 && bottomRow < HEIGHT) {
-            if (lvl[bottomRow][col] == 'S' && p.onGround) {
-                // Sinking mechanics - player slowly sinks
+            if (lvl[bottomRow][col] == 'S' && p.onGround) {//pehly dekhna kay agar woh valid tile par khara nahi toh ahista ahista usko neechayy sink karna hai
                 static float sinkTimer = 0;
                 sinkTimer += deltaTime;
                 if (sinkTimer > 0.5f) {
                     p.y += 1;
-                    sinkTimer = 0;
-                }
-                break;
-            }
-        }
-    }
-    
-    // Screen bounds and death
-    if (p.y > SCREEN_Y) {
+                    sinkTimer = 0;}
+                break;}}}
+   
+        if (p.y > SCREEN_Y) {//agar player screen sy neechay gir jai toh mar jai ga
         applyPenalty(gameState, 100, "Fell off screen");
-        p.health = 0;
-        if (p.health <= 0) {
+        p.health = 0;//death
+        if (p.health <= 0) {//life main sy nikal do aur agar abhi bhi life bachti hai toh aik aur chance do
             p.lives--;
             if (p.lives > 0) {
                 p.health = 3;
                 p.x = 300;
-                p.y = 100;
-            }
-        }
-    }
+                p.y = 100;}}}
     
-    if (p.x < 0) p.x = 0;
-    if (p.x > SCREEN_X - 96) p.x = SCREEN_X - 96;
-}
+    if (p.x < 0) p.x = 0;//left right sy screen sy bahir nahi nikalny dena
+    if (p.x > SCREEN_X - 96) p.x = SCREEN_X - 96;}
 
 void applyPenalty(GameStateData& gameState, int amount, string reason) {
-    gameState.player.score -= amount;
-    gameState.penaltyScore += amount;
-    if (gameState.player.score < 0) gameState.player.score = 0;
-    
-    // Optional: Display penalty message
-    // cout << "Penalty: -" << amount << " (" << reason << ")" << endl;
-}
+        gameState.player.score -= amount;//score main ny nikalna 
+        gameState.penaltyScore += amount;//aur penaly score maon add karna
+    if (gameState.player.score < 0) gameState.player.score = 0;}
 
 void drawPlayer(RenderWindow& window, Player& p, Texture& playerTex, Sprite& playerSprite) {
-    if (p.isYellow)
+        if (p.isYellow)//color check karna sabsy pehly
         playerSprite.setColor(Color(255, 255, 200));
-    else
+          else
         playerSprite.setColor(Color(200, 255, 200));
-    
-    playerSprite.setPosition(p.x + 48, p.y + 51);
-    
-    if (!p.facingRight)
-        playerSprite.setScale(-3, 3);
-    else
+        playerSprite.setPosition(p.x + 48, p.y + 51);
+    //direction sahi karni uski
+           if (!p.facingRight)
+          playerSprite.setScale(-3, 3);
+          else
         playerSprite.setScale(3, 3);
-    
+    //frame decide karna aur set karna
     IntRect textureRect(p.currentFrame * 32, 0, 32, 34);
     playerSprite.setTextureRect(textureRect);
     
-    window.draw(playerSprite);
-    
-    if (p.vacuuming) {
+    window.draw(playerSprite);//sab seetings ky sath player ki draw karna
+         if (p.vacuuming) {//vaccume ki range ko visible karta usky upar blue circle bana kar
         CircleShape vacCircle(p.vacuumRange);
         vacCircle.setFillColor(Color(100, 100, 255, 50));
         vacCircle.setOutlineColor(Color(50, 50, 200, 100));
         vacCircle.setOutlineThickness(3);
         vacCircle.setPosition(p.x + 48 - p.vacuumRange, p.y + 51 - p.vacuumRange);
         window.draw(vacCircle);
-        
+        //pehly vaccume ki direction decide karta 
         float dirX = cos(p.vacuumAngle) * 60;
         float dirY = sin(p.vacuumAngle) * 60;
-        
-        CircleShape dirCircle(10);
+        CircleShape dirCircle(10);//usky baad aik yellow circle banata uski direction ko batanay ky liyay
         dirCircle.setFillColor(Color(255, 255, 0, 200));
         dirCircle.setPosition(p.x + 48 + dirX - 10, p.y + 51 + dirY - 10);
-        window.draw(dirCircle);
-    }
-    
-    // Visual feedback for sliding
-    if (p.isMoving && p.onGround) {
+        window.draw(dirCircle);}
+
+    if (p.isMoving && p.onGround) {//dekhna kay player move kar raha ho aur ground par ho
         RectangleShape dust(Vector2f(20, 5));
-        dust.setFillColor(Color(200, 200, 200, 150));
-        dust.setPosition(p.x + (p.facingRight ? 10 : 70), p.y + 100);
-        window.draw(dust);
-    }
-}
+        dust.setFillColor(Color(200, 200, 200, 150));//light grey circle banata
+        dust.setPosition(p.x + (p.facingRight ? 10 : 70), p.y + 100);//takay dust(grey circle) player ky peechay aai
+        window.draw(dust);}}
 
 void updateEnemies(GameStateData& gameState, char** lvl, float deltaTime) {
     Player& p = gameState.player;
