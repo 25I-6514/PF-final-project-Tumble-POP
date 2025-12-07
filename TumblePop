@@ -1,0 +1,2263 @@
+#include <iostream>
+#include <fstream>
+#include <cmath>
+#include <cstdlib>
+#include <ctime>
+#include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
+#include <SFML/Window.hpp>
+#include <vector>
+#include <sstream>
+
+using namespace sf;
+using namespace std;
+
+// Game constants
+int SCREEN_X = 1152;
+int SCREEN_Y = 896;
+int CELL_SIZE = 64;
+int HEIGHT = 14;
+int WIDTH = 18;
+float GRAVITY = 1.0f;
+float JUMP_STRENGTH = -20.0f;
+float TERMINAL_VELOCITY = 20.0f;
+
+// Enums
+enum EnemyType { GHOST, SKELETON, INVISIBLE_MAN, CHELNOV, MINION };
+enum GameStateEnum { MENU, LEVEL1, LEVEL2, BOSS_LEVEL, WIN, GAMEOVER, PAUSED };
+enum PowerUpType { SPEED, RANGE, POWER, EXTRA_LIFE, BALL_BREAKER };
+
+// Structures
+struct Enemy {
+    float x, y;
+    float velocityX, velocityY;
+    EnemyType type;
+    bool active;
+    bool stunned;
+    float stunnedTimer;
+    int direction;
+    float moveTimer;
+    float jumpTimer;
+    float shootTimer;
+    bool canShoot;
+    bool invisible;
+    float invisTimer;
+    float teleportTimer;
+    bool onGround;
+};
+
+struct Projectile {
+    float x, y;
+    float velocityX, velocityY;
+    bool active;
+    int bounces;
+    bool rollingOnGround;
+    float rollDirection;
+    EnemyType enemyType;
+    bool isBallBreaker;
+    int splitCount;
+};
+
+struct EnemyProjectile {
+    float x, y;
+    float velocityX, velocityY;
+    bool active;
+};
+
+struct PowerUp {
+    float x, y;
+    PowerUpType type;
+    bool active;
+    float timer;
+};
+
+struct Player {
+    float x, y;
+    float velocityY;
+    bool onGround;
+    int lives;
+    int health;
+    int score;
+    bool isYellow;
+    float baseSpeed;
+    float speed;
+    float baseVacuumRange;
+    float vacuumRange;
+    float vacuumPower;
+    int maxCapture;
+    int capturedCount;
+    Enemy* captured;
+    float vacuumAngle;
+    bool vacuuming;
+    bool facingRight;
+    int combo;
+    float comboTimer;
+    float speedBoostTimer;
+    float rangeBoostTimer;
+    float powerBoostTimer;
+    int enemiesDefeated;
+    int damageTaken;
+    float animationTimer;
+    int currentFrame;
+    bool isMoving;
+    bool onCloudPlatform;
+    
+    Player() {
+        captured = new Enemy[3];
+        reset(true);
+    }
+    
+    ~Player() {
+        delete[] captured;
+    }
+    
+    void reset(bool newGame) {
+        x = 300;
+        y = 100;
+        velocityY = 0;
+        onGround = false;
+        onCloudPlatform = false;
+        if (newGame) {
+            lives = 3;
+            score = 0;
+        }
+        health = 3;
+        capturedCount = 0;
+        vacuumAngle = 0;
+        vacuuming = false;
+        facingRight = true;
+        combo = 0;
+        comboTimer = 0;
+        speedBoostTimer = 0;
+        rangeBoostTimer = 0;
+        powerBoostTimer = 0;
+        enemiesDefeated = 0;
+        damageTaken = 0;
+        maxCapture = 3;
+        animationTimer = 0;
+        currentFrame = 0;
+        isMoving = false;
+    }
+};
+
+struct Boss {
+    float x, y;
+    int health;
+    int maxHealth;
+    bool active;
+    float shootTimer;
+    bool followMode;
+    bool angryMode;
+    float tentacleTimer;
+    int tentacleCount;
+    float* tentacleX;
+    float* tentacleY;
+    float* tentacleDuration;
+    bool* tentacleActive;
+    
+    Boss() {
+        tentacleX = nullptr;
+        tentacleY = nullptr;
+        tentacleDuration = nullptr;
+        tentacleActive = nullptr;
+        reset();
+    }
+    
+    ~Boss() {
+        cleanup();
+    }
+    
+    void reset() {
+        active = false;
+        health = 10;
+        maxHealth = 10;
+        followMode = false;
+        angryMode = false;
+        tentacleCount = 0;
+        
+        cleanup();
+        tentacleX = new float[5];
+        tentacleY = new float[5];
+        tentacleDuration = new float[5];
+        tentacleActive = new bool[5];
+        
+        for (int i = 0; i < 5; i++) {
+            tentacleActive[i] = false;
+        }
+    }
+    
+    void cleanup() {
+        if (tentacleX) delete[] tentacleX;
+        if (tentacleY) delete[] tentacleY;
+        if (tentacleDuration) delete[] tentacleDuration;
+        if (tentacleActive) delete[] tentacleActive;
+    }
+};
+
+struct CloudPlatform {
+    float x, y;
+    float velocityY;
+    bool hasProducer;
+    bool isPlatform;
+    bool visible;
+    
+    CloudPlatform() {
+        x = 0;
+        y = 0;
+        velocityY = 1.0f;
+        hasProducer = false;
+        isPlatform = false;
+        visible = false;
+    }
+    
+    void init(float posX, float posY) {
+        x = posX;
+        y = posY;
+        velocityY = 1.0f;
+        hasProducer = true;
+        isPlatform = false;
+        visible = true;
+    }
+    
+    void update(float deltaTime, Enemy* enemies, int enemyCount) {
+        if (!hasProducer) {
+            // Platform becomes solid when producer destroyed
+            isPlatform = true;
+            return;
+        }
+        
+        // Move up and down
+        y += velocityY * deltaTime * 30;
+        
+        // Reverse direction at boundaries
+        if (y > 500 || y < 200) {
+            velocityY *= -1;
+        }
+        
+        // Check if producer (minion) is still alive
+        bool producerAlive = false;
+        for (int i = 0; i < enemyCount; i++) {
+            if (enemies[i].active && enemies[i].type == MINION) {
+                float dx = enemies[i].x - x;
+                float dy = enemies[i].y - y;
+                float distance = sqrt(dx*dx + dy*dy);
+                if (distance < 100) {
+                    producerAlive = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!producerAlive) {
+            hasProducer = false;
+            isPlatform = true;
+        }
+    }
+    
+    void draw(RenderWindow& window) {
+        if (!visible) return;
+        
+        RectangleShape platform(Vector2f(200, 30));
+        if (hasProducer) {
+            platform.setFillColor(Color(200, 200, 255, 150)); // Semi-transparent
+        } else {
+            platform.setFillColor(Color(150, 150, 255, 200)); // More solid
+        }
+        platform.setPosition(x - 100, y);
+        window.draw(platform);
+        
+        // Draw producer indicator
+        if (hasProducer) {
+            CircleShape producer(15);
+            producer.setFillColor(Color(255, 100, 100));
+            producer.setPosition(x - 15, y - 40);
+            window.draw(producer);
+        }
+    }
+    
+    bool checkCollisionWithPlayer(float px, float py, float pw, float ph) {
+        if (!isPlatform && !hasProducer) return false;
+        
+        return (px < x + 100 && px + pw > x - 100 && 
+                py + ph > y && py < y + 30);
+    }
+};
+
+struct LeaderboardEntry {
+    string name;
+    int score;
+};
+
+// Game State struct (NO GLOBAL VARIABLES)
+struct GameStateData {
+    Enemy* enemies;
+    int enemyCount;
+    int enemyCapacity;
+    
+    Projectile* projectiles;
+    int projectileCount;
+    int projectileCapacity;
+    
+    EnemyProjectile* enemyProjectiles;
+    int enemyProjectileCount;
+    int enemyProjectileCapacity;
+    
+    PowerUp* powerups;
+    int powerupCount;
+    int powerupCapacity;
+    
+    Boss boss;
+    Player player;
+    CloudPlatform cloudPlatform;
+    GameStateEnum currentState;
+    int currentLevel;
+    char** levelGrid;
+    float enemySpawnTimer;
+    int totalEnemiesInLevel;
+    float penaltyScore;
+    
+    // Sliding mechanics
+    float slideTimer;
+    bool isSliding;
+    
+    GameStateData() {
+        enemyCapacity = 10;
+        enemyCount = 0;
+        enemies = new Enemy[enemyCapacity];
+        
+        projectileCapacity = 20;
+        projectileCount = 0;
+        projectiles = new Projectile[projectileCapacity];
+        
+        enemyProjectileCapacity = 10;
+        enemyProjectileCount = 0;
+        enemyProjectiles = new EnemyProjectile[enemyProjectileCapacity];
+        
+        powerupCapacity = 5;
+        powerupCount = 0;
+        powerups = new PowerUp[powerupCapacity];
+        
+        levelGrid = nullptr;
+        currentState = MENU;
+        currentLevel = 1;
+        enemySpawnTimer = 0;
+        totalEnemiesInLevel = 0;
+        penaltyScore = 0;
+        slideTimer = 0;
+        isSliding = false;
+        
+        initArrays();
+    }
+    
+    ~GameStateData() {
+        cleanup();
+    }
+    
+    void initArrays() {
+        for (int i = 0; i < projectileCapacity; i++) {
+            projectiles[i].active = false;
+            projectiles[i].isBallBreaker = false;
+            projectiles[i].splitCount = 0;
+        }
+        
+        for (int i = 0; i < enemyProjectileCapacity; i++) {
+            enemyProjectiles[i].active = false;
+        }
+        
+        for (int i = 0; i < powerupCapacity; i++) {
+            powerups[i].active = false;
+        }
+    }
+    
+    void cleanup() {
+        delete[] enemies;
+        delete[] projectiles;
+        delete[] enemyProjectiles;
+        delete[] powerups;
+        
+        boss.cleanup();
+        
+        if (levelGrid) {
+            for (int i = 0; i < HEIGHT; i++)
+                delete[] levelGrid[i];
+            delete[] levelGrid;
+        }
+    }
+};
+
+// Function prototypes
+void initLevel(char** lvl, int level);
+void displayLevel(RenderWindow& window, char** lvl, Texture& bgTex, Sprite& bgSprite, Texture& blockTexture, Sprite& blockSprite);
+void playerPhysics(Player& p, char** lvl, CloudPlatform& cloudPlatform, float deltaTime, GameStateData& gameState);
+void drawPlayer(RenderWindow& window, Player& p, Texture& playerTex, Sprite& playerSprite);
+void updateEnemies(GameStateData& gameState, char** lvl, float deltaTime);
+void drawEnemies(RenderWindow& window, GameStateData& gameState, 
+                 Texture& ghostTex, Texture& skelTex, Texture& invisTex, Texture& chelnovTex,
+                 Sprite& ghostSprite, Sprite& skelSprite, Sprite& invisSprite, Sprite& chelnovSprite);
+void handleVacuum(GameStateData& gameState, float deltaTime);
+void shootProjectile(GameStateData& gameState);
+void updateProjectiles(GameStateData& gameState, char** lvl, float deltaTime);
+void updateEnemyProjectiles(GameStateData& gameState, float deltaTime);
+void spawnPowerUp(GameStateData& gameState, float x, float y, PowerUpType type);
+void updatePowerUps(GameStateData& gameState, float deltaTime);
+void drawPowerUps(RenderWindow& window, GameStateData& gameState);
+void drawUI(RenderWindow& window, GameStateData& gameState, Font& font, float levelTime, bool paused);
+bool checkCollision(float x1, float y1, float w1, float h1, float x2, float y2, float w2, float h2);
+int calculateLevelScore(GameStateData& gameState, float levelTime);
+void resizeEnemyArray(GameStateData& gameState);
+void resizeProjectileArray(GameStateData& gameState);
+void addEnemy(GameStateData& gameState, Enemy newEnemy);
+void addProjectile(GameStateData& gameState, Projectile newProj);
+void updateBoss(GameStateData& gameState, float deltaTime);
+void drawBoss(RenderWindow& window, GameStateData& gameState);
+void saveLeaderboard(const string& name, int score);
+void loadLeaderboard(vector<LeaderboardEntry>& leaderboard);
+void resizeLevelForBoss(char**& lvl, int& height, int& width, int& cellSize);
+void applyPenalty(GameStateData& gameState, int amount, string reason);
+void updateSlidingMechanics(GameStateData& gameState, char** lvl, float deltaTime);
+bool checkPlatformCollision(float px, float py, float pw, float ph, char** lvl);
+
+// Function implementations
+void resizeEnemyArray(GameStateData& gameState) {
+    int newCapacity = gameState.enemyCapacity * 2;
+    Enemy* newArr = new Enemy[newCapacity];
+    
+    for (int i = 0; i < gameState.enemyCount; i++)
+        newArr[i] = gameState.enemies[i];
+    
+    delete[] gameState.enemies;
+    gameState.enemies = newArr;
+    gameState.enemyCapacity = newCapacity;
+}
+
+void resizeProjectileArray(GameStateData& gameState) {
+    int newCapacity = gameState.projectileCapacity * 2;
+    Projectile* newArr = new Projectile[newCapacity];
+    
+    for (int i = 0; i < gameState.projectileCount; i++)
+        newArr[i] = gameState.projectiles[i];
+    
+    for (int i = gameState.projectileCount; i < newCapacity; i++)
+        newArr[i].active = false;
+    
+    delete[] gameState.projectiles;
+    gameState.projectiles = newArr;
+    gameState.projectileCapacity = newCapacity;
+}
+
+void addEnemy(GameStateData& gameState, Enemy newEnemy) {
+    if (gameState.enemyCount >= gameState.enemyCapacity)
+        resizeEnemyArray(gameState);
+    
+    gameState.enemies[gameState.enemyCount++] = newEnemy;
+}
+
+void addProjectile(GameStateData& gameState, Projectile newProj) {
+    for (int i = 0; i < gameState.projectileCount; i++) {
+        if (!gameState.projectiles[i].active) {
+            gameState.projectiles[i] = newProj;
+            return;
+        }
+    }
+    
+    if (gameState.projectileCount >= gameState.projectileCapacity)
+        resizeProjectileArray(gameState);
+    
+    gameState.projectiles[gameState.projectileCount++] = newProj;
+}
+
+void initLevel(char** lvl, int level) {
+    for (int i = 0; i < HEIGHT; i++)
+        for (int j = 0; j < WIDTH; j++)
+            lvl[i][j] = ' ';
+
+    if (level == 1) {
+        for (int j = 0; j < WIDTH; j++)
+            lvl[HEIGHT-1][j] = '#';
+        
+        for (int j = 2; j < 16; j++)
+            lvl[10][j] = '#';
+        
+        for (int j = 3; j < 15; j++)
+            lvl[7][j] = '#';
+        
+        for (int j = 2; j < 8; j++)
+            lvl[4][j] = '#';
+        for (int j = 10; j < 16; j++)
+            lvl[4][j] = '#';
+        
+        // Add some soft tiles for sliding mechanics
+        for (int j = 5; j < 7; j++)
+            lvl[9][j] = 'S'; // Soft tile
+    }
+    else if (level == 2) {
+        for (int j = 0; j < WIDTH; j++)
+            lvl[HEIGHT-1][j] = '#';
+        
+        // Slanted platforms with sliding mechanics
+        for (int j = 1; j < 8; j++) {
+            lvl[11 - j/2][j] = '#';
+            if (j % 2 == 0) lvl[11 - j/2][j] = 'S'; // Every other is soft
+        }
+        for (int j = 10; j < 17; j++) {
+            lvl[11 - (j-10)/2][j] = '#';
+            if (j % 2 == 0) lvl[11 - (j-10)/2][j] = 'S';
+        }
+        
+        for (int j = 5; j < 13; j++)
+            lvl[3][j] = '#';
+    }
+    else if (level == 3) {
+        for (int j = 0; j < WIDTH; j++)
+            lvl[HEIGHT-1][j] = '#';
+        
+        for (int j = 4; j < 14; j++)
+            lvl[HEIGHT-5][j] = '#';
+        
+        for (int j = 1; j < 5; j++)
+            lvl[HEIGHT-8][j] = '#';
+        for (int j = 13; j < 17; j++)
+            lvl[HEIGHT-8][j] = '#';
+        
+        // Soft tiles in boss level
+        for (int j = 6; j < 12; j += 2)
+            lvl[HEIGHT-5][j] = 'S';
+    }
+}
+
+void displayLevel(RenderWindow& window, char** lvl, Texture& bgTex, Sprite& bgSprite, Texture& blockTexture, Sprite& blockSprite, Texture& softTexture, Sprite& softSprite) {
+    window.draw(bgSprite);
+    
+    for (int i = 0; i < HEIGHT; i++) {
+        for (int j = 0; j < WIDTH; j++) {
+            if (lvl[i][j] == '#') {
+                blockSprite.setPosition(j * CELL_SIZE, i * CELL_SIZE);
+                window.draw(blockSprite);
+            }
+            else if (lvl[i][j] == 'S') {
+                softSprite.setPosition(j * CELL_SIZE, i * CELL_SIZE);
+                window.draw(softSprite);
+            }
+        }
+    }
+}
+
+void updateSlidingMechanics(GameStateData& gameState, char** lvl, float deltaTime) {
+    if (gameState.currentLevel != 2) return;
+    
+    Player& p = gameState.player;
+    
+    // Check if player is on a slanted platform
+    int row = (int)(p.y + 102) / CELL_SIZE;
+    int leftCol = (int)p.x / CELL_SIZE;
+    int rightCol = (int)(p.x + 96) / CELL_SIZE;
+    
+    bool onSlanted = false;
+    for (int col = leftCol; col <= rightCol; col++) {
+        if (col >= 0 && col < WIDTH && row >= 0 && row < HEIGHT) {
+            if (lvl[row][col] == 'S') {
+                onSlanted = true;
+                break;
+            }
+        }
+    }
+    
+    if (onSlanted && p.onGround) {
+        gameState.isSliding = true;
+        gameState.slideTimer += deltaTime;
+        
+        // Apply sliding velocity based on angle
+        p.x += 3.0f * deltaTime * 60; // Slide to the right on slanted platforms
+        
+        // Visual feedback
+        if ((int)(gameState.slideTimer * 10) % 2 == 0) {
+            p.x += 1; // Small shake effect
+        }
+    } else {
+        gameState.isSliding = false;
+        gameState.slideTimer = 0;
+    }
+}
+
+bool checkPlatformCollision(float px, float py, float pw, float ph, char** lvl) {
+    int bottomRow = (int)(py + ph) / CELL_SIZE;
+    int leftCol = (int)px / CELL_SIZE;
+    int rightCol = (int)(px + pw) / CELL_SIZE;
+    int midCol = (int)(px + pw/2) / CELL_SIZE;
+    
+    if (bottomRow >= 0 && bottomRow < HEIGHT) {
+        if ((leftCol >= 0 && leftCol < WIDTH && (lvl[bottomRow][leftCol] == '#' || lvl[bottomRow][leftCol] == 'S')) ||
+            (rightCol >= 0 && rightCol < WIDTH && (lvl[bottomRow][rightCol] == '#' || lvl[bottomRow][rightCol] == 'S')) ||
+            (midCol >= 0 && midCol < WIDTH && (lvl[bottomRow][midCol] == '#' || lvl[bottomRow][midCol] == 'S'))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void playerPhysics(Player& p, char** lvl, CloudPlatform& cloudPlatform, float deltaTime, GameStateData& gameState) {
+    // Apply sliding mechanics first
+    updateSlidingMechanics(gameState, lvl, deltaTime);
+    
+    // Gravity
+    if (!p.onGround && !p.onCloudPlatform)
+        p.velocityY += GRAVITY;
+    
+    if (p.velocityY > TERMINAL_VELOCITY) 
+        p.velocityY = TERMINAL_VELOCITY;
+    
+    p.y += p.velocityY;
+    
+    // Reset ground state
+    p.onGround = false;
+    p.onCloudPlatform = false;
+    
+    // Check cloud platform collision
+    if (cloudPlatform.checkCollisionWithPlayer(p.x, p.y, 96, 102)) {
+        p.onCloudPlatform = true;
+        p.y = cloudPlatform.y - 102;
+        p.velocityY = 0;
+        
+        // If platform has producer, player can fall through
+        if (cloudPlatform.hasProducer) {
+            p.velocityY += GRAVITY;
+            p.onCloudPlatform = false;
+        }
+    }
+    
+    // Check regular platform collision
+    if (checkPlatformCollision(p.x, p.y, 96, 102, lvl)) {
+        p.onGround = true;
+        int bottomRow = (int)(p.y + 102) / CELL_SIZE;
+        p.y = bottomRow * CELL_SIZE - 102;
+        p.velocityY = 0;
+    }
+    
+    // Check soft tile sinking
+    int bottomRow = (int)(p.y + 102) / CELL_SIZE;
+    int leftCol = (int)p.x / CELL_SIZE;
+    int rightCol = (int)(p.x + 96) / CELL_SIZE;
+    
+    for (int col = leftCol; col <= rightCol; col++) {
+        if (col >= 0 && col < WIDTH && bottomRow >= 0 && bottomRow < HEIGHT) {
+            if (lvl[bottomRow][col] == 'S' && p.onGround) {
+                // Sinking mechanics - player slowly sinks
+                static float sinkTimer = 0;
+                sinkTimer += deltaTime;
+                if (sinkTimer > 0.5f) {
+                    p.y += 1;
+                    sinkTimer = 0;
+                }
+                break;
+            }
+        }
+    }
+    
+    // Screen bounds and death
+    if (p.y > SCREEN_Y) {
+        applyPenalty(gameState, 100, "Fell off screen");
+        p.health = 0;
+        if (p.health <= 0) {
+            p.lives--;
+            if (p.lives > 0) {
+                p.health = 3;
+                p.x = 300;
+                p.y = 100;
+            }
+        }
+    }
+    
+    if (p.x < 0) p.x = 0;
+    if (p.x > SCREEN_X - 96) p.x = SCREEN_X - 96;
+}
+
+void applyPenalty(GameStateData& gameState, int amount, string reason) {
+    gameState.player.score -= amount;
+    gameState.penaltyScore += amount;
+    if (gameState.player.score < 0) gameState.player.score = 0;
+    
+    // Optional: Display penalty message
+    // cout << "Penalty: -" << amount << " (" << reason << ")" << endl;
+}
+
+void drawPlayer(RenderWindow& window, Player& p, Texture& playerTex, Sprite& playerSprite) {
+    if (p.isYellow)
+        playerSprite.setColor(Color(255, 255, 200));
+    else
+        playerSprite.setColor(Color(200, 255, 200));
+    
+    playerSprite.setPosition(p.x + 48, p.y + 51);
+    
+    if (!p.facingRight)
+        playerSprite.setScale(-3, 3);
+    else
+        playerSprite.setScale(3, 3);
+    
+    IntRect textureRect(p.currentFrame * 32, 0, 32, 34);
+    playerSprite.setTextureRect(textureRect);
+    
+    window.draw(playerSprite);
+    
+    if (p.vacuuming) {
+        CircleShape vacCircle(p.vacuumRange);
+        vacCircle.setFillColor(Color(100, 100, 255, 50));
+        vacCircle.setOutlineColor(Color(50, 50, 200, 100));
+        vacCircle.setOutlineThickness(3);
+        vacCircle.setPosition(p.x + 48 - p.vacuumRange, p.y + 51 - p.vacuumRange);
+        window.draw(vacCircle);
+        
+        float dirX = cos(p.vacuumAngle) * 60;
+        float dirY = sin(p.vacuumAngle) * 60;
+        
+        CircleShape dirCircle(10);
+        dirCircle.setFillColor(Color(255, 255, 0, 200));
+        dirCircle.setPosition(p.x + 48 + dirX - 10, p.y + 51 + dirY - 10);
+        window.draw(dirCircle);
+    }
+    
+    // Visual feedback for sliding
+    if (p.isMoving && p.onGround) {
+        RectangleShape dust(Vector2f(20, 5));
+        dust.setFillColor(Color(200, 200, 200, 150));
+        dust.setPosition(p.x + (p.facingRight ? 10 : 70), p.y + 100);
+        window.draw(dust);
+    }
+}
+
+void updateEnemies(GameStateData& gameState, char** lvl, float deltaTime) {
+    Player& p = gameState.player;
+    
+    for (int i = 0; i < gameState.enemyCount; i++) {
+        if (!gameState.enemies[i].active) continue;
+        
+        if (gameState.enemies[i].stunned) {
+            gameState.enemies[i].stunnedTimer -= deltaTime;
+            if (gameState.enemies[i].stunnedTimer <= 0)
+                gameState.enemies[i].stunned = false;
+            continue;
+        }
+        
+        if (!gameState.enemies[i].onGround)
+            gameState.enemies[i].velocityY += GRAVITY * 0.5f;
+        if (gameState.enemies[i].velocityY > 15) gameState.enemies[i].velocityY = 15;
+        
+        gameState.enemies[i].y += gameState.enemies[i].velocityY;
+        
+        int eBottom = (int)(gameState.enemies[i].y + 64) / CELL_SIZE;
+        int eLeft = (int)gameState.enemies[i].x / CELL_SIZE;
+        int eRight = (int)(gameState.enemies[i].x + 64) / CELL_SIZE;
+        
+        gameState.enemies[i].onGround = false;
+        if (eBottom >= 0 && eBottom < HEIGHT) {
+            if ((eLeft >= 0 && eLeft < WIDTH && lvl[eBottom][eLeft] == '#') ||
+                (eRight >= 0 && eRight < WIDTH && lvl[eBottom][eRight] == '#')) {
+                gameState.enemies[i].onGround = true;
+                gameState.enemies[i].y = eBottom * CELL_SIZE - 64;
+                gameState.enemies[i].velocityY = 0;
+            }
+        }
+        
+        switch (gameState.enemies[i].type) {
+            case GHOST:
+            case MINION:
+                gameState.enemies[i].x += gameState.enemies[i].velocityX * gameState.enemies[i].direction;
+                gameState.enemies[i].moveTimer += deltaTime;
+                
+                if (gameState.enemies[i].moveTimer > 2.0f) {
+                    gameState.enemies[i].direction *= -1;
+                    gameState.enemies[i].moveTimer = 0;
+                }
+                
+                if (gameState.enemies[i].x < 30 || gameState.enemies[i].x > SCREEN_X - 100)
+                    gameState.enemies[i].direction *= -1;
+                break;
+                
+            case SKELETON:
+                gameState.enemies[i].x += gameState.enemies[i].velocityX * gameState.enemies[i].direction;
+                gameState.enemies[i].jumpTimer += deltaTime;
+                
+                if (gameState.enemies[i].jumpTimer > 3.0f && gameState.enemies[i].onGround) {
+                    gameState.enemies[i].velocityY = -15;
+                    gameState.enemies[i].jumpTimer = 0;
+                    gameState.enemies[i].onGround = false;
+                }
+                
+                if (gameState.enemies[i].x < 30 || gameState.enemies[i].x > SCREEN_X - 100)
+                    gameState.enemies[i].direction *= -1;
+                break;
+                
+            case INVISIBLE_MAN:
+                gameState.enemies[i].x += gameState.enemies[i].velocityX * gameState.enemies[i].direction;
+                gameState.enemies[i].invisTimer += deltaTime;
+                gameState.enemies[i].teleportTimer -= deltaTime;
+                
+                if (gameState.enemies[i].invisTimer > 3.0f && !gameState.enemies[i].invisible) {
+                    gameState.enemies[i].invisible = true;
+                    gameState.enemies[i].invisTimer = 0;
+                }
+                else if (gameState.enemies[i].invisTimer > 2.0f && gameState.enemies[i].invisible) {
+                    gameState.enemies[i].invisible = false;
+                    gameState.enemies[i].invisTimer = 0;
+                }
+                
+                if (gameState.enemies[i].teleportTimer <= 0) {
+                    gameState.enemies[i].x = 100 + rand() % (SCREEN_X - 200);
+                    gameState.enemies[i].y = 100 + rand() % 400;
+                    gameState.enemies[i].teleportTimer = 5.0f + rand() % 5;
+                    gameState.enemies[i].direction = (rand() % 2 == 0) ? 1 : -1;
+                }
+                
+                if (gameState.enemies[i].x < 30 || gameState.enemies[i].x > SCREEN_X - 100)
+                    gameState.enemies[i].direction *= -1;
+                break;
+                
+            case CHELNOV:
+                gameState.enemies[i].x += gameState.enemies[i].velocityX * gameState.enemies[i].direction;
+                gameState.enemies[i].shootTimer -= deltaTime;
+                
+                if (gameState.enemies[i].shootTimer <= 1.0f)
+                    gameState.enemies[i].canShoot = false;
+                
+                if (gameState.enemies[i].shootTimer <= 0) {
+                    gameState.enemies[i].canShoot = true;
+                    gameState.enemies[i].shootTimer = 4.0f;
+                    
+                    bool added = false;
+                    for (int j = 0; j < gameState.enemyProjectileCount; j++) {
+                        if (!gameState.enemyProjectiles[j].active) {
+                            gameState.enemyProjectiles[j].active = true;
+                            gameState.enemyProjectiles[j].x = gameState.enemies[i].x + 32;
+                            gameState.enemyProjectiles[j].y = gameState.enemies[i].y + 32;
+                            
+                            float dx = (p.x + 48) - gameState.enemyProjectiles[j].x;
+                            float dy = (p.y + 51) - gameState.enemyProjectiles[j].y;
+                            float dist = sqrt(dx*dx + dy*dy);
+                            gameState.enemyProjectiles[j].velocityX = (dx / dist) * 8;
+                            gameState.enemyProjectiles[j].velocityY = (dy / dist) * 8;
+                            added = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!added && gameState.enemyProjectileCount < gameState.enemyProjectileCapacity) {
+                        gameState.enemyProjectiles[gameState.enemyProjectileCount].active = true;
+                        gameState.enemyProjectiles[gameState.enemyProjectileCount].x = gameState.enemies[i].x + 32;
+                        gameState.enemyProjectiles[gameState.enemyProjectileCount].y = gameState.enemies[i].y + 32;
+                        
+                        float dx = (p.x + 48) - gameState.enemyProjectiles[gameState.enemyProjectileCount].x;
+                        float dy = (p.y + 51) - gameState.enemyProjectiles[gameState.enemyProjectileCount].y;
+                        float dist = sqrt(dx*dx + dy*dy);
+                        gameState.enemyProjectiles[gameState.enemyProjectileCount].velocityX = (dx / dist) * 8;
+                        gameState.enemyProjectiles[gameState.enemyProjectileCount].velocityY = (dy / dist) * 8;
+                        gameState.enemyProjectileCount++;
+                    }
+                }
+                
+                if (gameState.enemies[i].x < 30 || gameState.enemies[i].x > SCREEN_X - 100)
+                    gameState.enemies[i].direction *= -1;
+                break;
+        }
+        
+        if (checkCollision(p.x, p.y, 96, 102, gameState.enemies[i].x, gameState.enemies[i].y, 64, 64)) {
+            if (!gameState.enemies[i].stunned) {
+                applyPenalty(gameState, 50, "Enemy touch");
+                p.health--;
+                p.damageTaken++;
+                gameState.enemies[i].x += gameState.enemies[i].direction * 80;
+                
+                if (p.health <= 0) {
+                    applyPenalty(gameState, 200, "Death");
+                    p.lives--;
+                    if (p.lives > 0) {
+                        p.health = 3;
+                        p.x = 300;
+                        p.y = 100;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void drawEnemies(RenderWindow& window, GameStateData& gameState, 
+                 Texture& ghostTex, Texture& skelTex, Texture& invisTex, Texture& chelnovTex,
+                 Sprite& ghostSprite, Sprite& skelSprite, Sprite& invisSprite, Sprite& chelnovSprite) {
+    for (int i = 0; i < gameState.enemyCount; i++) {
+        if (!gameState.enemies[i].active) continue;
+        
+        Sprite* enemySprite = nullptr;
+        
+        switch (gameState.enemies[i].type) {
+            case GHOST:
+            case MINION:
+                enemySprite = &ghostSprite;
+                break;
+            case SKELETON:
+                enemySprite = &skelSprite;
+                break;
+            case INVISIBLE_MAN:
+                enemySprite = &invisSprite;
+                break;
+            case CHELNOV:
+                enemySprite = &chelnovSprite;
+                break;
+        }
+        
+        if (!enemySprite) continue;
+        
+        if (gameState.enemies[i].type == INVISIBLE_MAN && gameState.enemies[i].invisible) {
+            enemySprite->setColor(Color(255, 255, 255, 80));
+        }
+        else if (gameState.enemies[i].stunned) {
+            enemySprite->setColor(Color(255, 255, 0, 180));
+        }
+        else if (gameState.enemies[i].type == CHELNOV && !gameState.enemies[i].canShoot) {
+            enemySprite->setColor(Color(255, 200, 200));
+        }
+        else if (gameState.enemies[i].type == MINION) {
+            enemySprite->setColor(Color(255, 200, 255));
+        }
+        else {
+            enemySprite->setColor(Color::White);
+        }
+        
+        int frame = (int)(gameState.enemies[i].moveTimer * 5) % 2;
+        IntRect textureRect(frame * 32, 0, 32, 32);
+        enemySprite->setTextureRect(textureRect);
+        
+        enemySprite->setPosition(gameState.enemies[i].x + 32, gameState.enemies[i].y + 32);
+        
+        if (gameState.enemies[i].direction < 0)
+            enemySprite->setScale(-2, 2);
+        else
+            enemySprite->setScale(2, 2);
+            
+        window.draw(*enemySprite);
+    }
+}
+
+void handleVacuum(GameStateData& gameState, float deltaTime) {
+    Player& p = gameState.player;
+    
+    for (int i = 0; i < gameState.enemyCount; i++) {
+        if (!gameState.enemies[i].active || gameState.enemies[i].stunned) continue;
+        
+        if (gameState.enemies[i].type == CHELNOV && !gameState.enemies[i].canShoot)
+            continue;
+        
+        float dx = gameState.enemies[i].x - (p.x + 48);
+        float dy = gameState.enemies[i].y - (p.y + 51);
+        float distance = sqrt(dx*dx + dy*dy);
+        
+        if (distance < p.vacuumRange * p.vacuumPower) {
+            float pullStrength = 4 * p.vacuumPower;
+            gameState.enemies[i].x -= (dx / distance) * pullStrength;
+            gameState.enemies[i].y -= (dy / distance) * pullStrength;
+            
+            if (distance < 40) {
+                if (p.capturedCount >= p.maxCapture) {
+                    int newCap = p.maxCapture + 2;
+                    Enemy* newCaptured = new Enemy[newCap];
+                    for (int j = 0; j < p.capturedCount; j++)
+                        newCaptured[j] = p.captured[j];
+                    delete[] p.captured;
+                    p.captured = newCaptured;
+                    p.maxCapture = newCap;
+                }
+                
+                p.captured[p.capturedCount] = gameState.enemies[i];
+                p.capturedCount++;
+                
+                switch (gameState.enemies[i].type) {
+                    case GHOST: p.score += 50; break;
+                    case SKELETON: p.score += 75; break;
+                    case INVISIBLE_MAN: p.score += 150; break;
+                    case CHELNOV: p.score += 200; break;
+                    case MINION: p.score += 100; break;
+                }
+                
+                gameState.enemies[i].active = false;
+            }
+        }
+    }
+}
+
+void shootProjectile(GameStateData& gameState) {
+    Player& p = gameState.player;
+    if (p.capturedCount == 0) return;
+    
+    Projectile proj;
+    proj.active = true;
+    proj.x = p.x + 48;
+    proj.y = p.y + 51;
+    proj.bounces = 0;
+    proj.rollingOnGround = false;
+    proj.enemyType = p.captured[p.capturedCount - 1].type;
+    proj.isBallBreaker = false;
+    proj.splitCount = 0;
+    
+    float speed = 15;
+    proj.velocityX = cos(p.vacuumAngle) * speed;
+    proj.velocityY = sin(p.vacuumAngle) * speed;
+    proj.rollDirection = (proj.velocityX > 0) ? 1 : -1;
+    
+    p.capturedCount--;
+    
+    addProjectile(gameState, proj);
+}
+
+void updateProjectiles(GameStateData& gameState, char** lvl, float deltaTime) {
+    Player& p = gameState.player;
+    
+    for (int i = 0; i < gameState.projectileCount; i++) {
+        if (!gameState.projectiles[i].active) continue;
+        
+        if (!gameState.projectiles[i].rollingOnGround) {
+            gameState.projectiles[i].x += gameState.projectiles[i].velocityX;
+            gameState.projectiles[i].y += gameState.projectiles[i].velocityY;
+            gameState.projectiles[i].velocityY += GRAVITY * 0.3f;
+            
+            if (gameState.projectiles[i].isBallBreaker) {
+                if (gameState.projectiles[i].x < 0 || gameState.projectiles[i].x > SCREEN_X) {
+                    gameState.projectiles[i].velocityX *= -1;
+                    gameState.projectiles[i].bounces++;
+                    
+                    if (gameState.projectiles[i].splitCount < 2 && gameState.projectiles[i].bounces == 1) {
+                        Projectile split1 = gameState.projectiles[i];
+                        split1.velocityX = gameState.projectiles[i].velocityX * 0.8f;
+                        split1.velocityY = -8;
+                        split1.splitCount++;
+                        addProjectile(gameState, split1);
+                        
+                        Projectile split2 = gameState.projectiles[i];
+                        split2.velocityX = gameState.projectiles[i].velocityX * 1.2f;
+                        split2.velocityY = -5;
+                        split2.splitCount++;
+                        addProjectile(gameState, split2);
+                    }
+                }
+            }
+            
+            int pBottom = (int)(gameState.projectiles[i].y + 32) / CELL_SIZE;
+            int pLeft = (int)gameState.projectiles[i].x / CELL_SIZE;
+            int pRight = (int)(gameState.projectiles[i].x + 32) / CELL_SIZE;
+            
+            if (pBottom >= 0 && pBottom < HEIGHT) {
+                if ((pLeft >= 0 && pLeft < WIDTH && (lvl[pBottom][pLeft] == '#' || lvl[pBottom][pLeft] == 'S')) ||
+                    (pRight >= 0 && pRight < WIDTH && (lvl[pBottom][pRight] == '#' || lvl[pBottom][pRight] == 'S'))) {
+                    gameState.projectiles[i].rollingOnGround = true;
+                    gameState.projectiles[i].y = pBottom * CELL_SIZE - 32;
+                    gameState.projectiles[i].velocityY = 0;
+                    if (gameState.projectiles[i].velocityX != 0)
+                        gameState.projectiles[i].rollDirection = (gameState.projectiles[i].velocityX > 0) ? 1 : -1;
+                    gameState.projectiles[i].velocityX = gameState.projectiles[i].rollDirection * 8;
+                }
+            }
+        }
+        else {
+            gameState.projectiles[i].x += gameState.projectiles[i].velocityX;
+            
+            int pBottom = (int)(gameState.projectiles[i].y + 33) / CELL_SIZE;
+            int pLeft = (int)gameState.projectiles[i].x / CELL_SIZE;
+            int pRight = (int)(gameState.projectiles[i].x + 32) / CELL_SIZE;
+            
+            bool stillOnGround = false;
+            if (pBottom >= 0 && pBottom < HEIGHT) {
+                if ((pLeft >= 0 && pLeft < WIDTH && (lvl[pBottom][pLeft] == '#' || lvl[pBottom][pLeft] == 'S')) ||
+                    (pRight >= 0 && pRight < WIDTH && (lvl[pBottom][pRight] == '#' || lvl[pBottom][pRight] == 'S'))) {
+                    stillOnGround = true;
+                }
+            }
+            
+            if (!stillOnGround) {
+                gameState.projectiles[i].rollingOnGround = false;
+                gameState.projectiles[i].velocityY = 2;
+            }
+        }
+        
+        if (gameState.projectiles[i].x < -50 || gameState.projectiles[i].x > SCREEN_X + 50 || 
+            gameState.projectiles[i].y > SCREEN_Y + 50) {
+            gameState.projectiles[i].active = false;
+            continue;
+        }
+        
+        int enemiesHit = 0;
+        for (int j = 0; j < gameState.enemyCount; j++) {
+            if (!gameState.enemies[j].active) continue;
+            
+            if (checkCollision(gameState.projectiles[i].x, gameState.projectiles[i].y, 32, 32, 
+                              gameState.enemies[j].x, gameState.enemies[j].y, 64, 64)) {
+                enemiesHit++;
+                gameState.enemies[j].active = false;
+                p.enemiesDefeated++;
+                
+                int baseScore = 0;
+                switch (gameState.enemies[j].type) {
+                    case GHOST: baseScore = 100; break;
+                    case SKELETON: baseScore = 150; break;
+                    case INVISIBLE_MAN: baseScore = 300; break;
+                    case CHELNOV: baseScore = 400; break;
+                    case MINION: baseScore = 150; break;
+                }
+                
+                float multiplier = 1.0f;
+                if (p.combo >= 3 && p.combo <= 4) multiplier = 1.5f;
+                else if (p.combo >= 5) multiplier = 2.0f;
+                
+                p.score += (int)(baseScore * multiplier);
+                
+                if (rand() % 10 < 2) {
+                    PowerUpType type = (PowerUpType)(rand() % 5);
+                    spawnPowerUp(gameState, gameState.enemies[j].x, gameState.enemies[j].y, type);
+                }
+            }
+        }
+        
+        if (enemiesHit > 0) {
+            p.combo++;
+            p.comboTimer = 3.0f;
+            
+            if (enemiesHit >= 2)
+                p.score += (enemiesHit == 2) ? 200 : 500;
+            
+            if (!gameState.projectiles[i].isBallBreaker)
+                gameState.projectiles[i].active = false;
+        }
+    }
+}
+
+void updateEnemyProjectiles(GameStateData& gameState, float deltaTime) {
+    Player& p = gameState.player;
+    
+    for (int i = 0; i < gameState.enemyProjectileCount; i++) {
+        if (!gameState.enemyProjectiles[i].active) continue;
+        
+        gameState.enemyProjectiles[i].x += gameState.enemyProjectiles[i].velocityX;
+        gameState.enemyProjectiles[i].y += gameState.enemyProjectiles[i].velocityY;
+        
+        if (gameState.enemyProjectiles[i].x < -50 || gameState.enemyProjectiles[i].x > SCREEN_X + 50 ||
+            gameState.enemyProjectiles[i].y < -50 || gameState.enemyProjectiles[i].y > SCREEN_Y + 50) {
+            gameState.enemyProjectiles[i].active = false;
+            continue;
+        }
+        
+        if (checkCollision(gameState.enemyProjectiles[i].x, gameState.enemyProjectiles[i].y, 16, 16, p.x, p.y, 96, 102)) {
+            applyPenalty(gameState, 50, "Hit by projectile");
+            p.health--;
+            p.damageTaken++;
+            gameState.enemyProjectiles[i].active = false;
+            
+            if (p.health <= 0) {
+                applyPenalty(gameState, 200, "Death by projectile");
+                p.lives--;
+                if (p.lives > 0) {
+                    p.health = 3;
+                    p.x = 300;
+                    p.y = 100;
+                }
+            }
+        }
+    }
+}
+
+void spawnPowerUp(GameStateData& gameState, float x, float y, PowerUpType type) {
+    for (int i = 0; i < gameState.powerupCount; i++) {
+        if (!gameState.powerups[i].active) {
+            gameState.powerups[i].active = true;
+            gameState.powerups[i].x = x;
+            gameState.powerups[i].y = y;
+            gameState.powerups[i].timer = 10.0f;
+            gameState.powerups[i].type = type;
+            return;
+        }
+    }
+    
+    if (gameState.powerupCount < gameState.powerupCapacity) {
+        gameState.powerups[gameState.powerupCount].active = true;
+        gameState.powerups[gameState.powerupCount].x = x;
+        gameState.powerups[gameState.powerupCount].y = y;
+        gameState.powerups[gameState.powerupCount].timer = 10.0f;
+        gameState.powerups[gameState.powerupCount].type = type;
+        gameState.powerupCount++;
+    }
+}
+
+void updatePowerUps(GameStateData& gameState, float deltaTime) {
+    Player& p = gameState.player;
+    
+    for (int i = 0; i < gameState.powerupCount; i++) {
+        if (!gameState.powerups[i].active) continue;
+        
+        gameState.powerups[i].timer -= deltaTime;
+        if (gameState.powerups[i].timer <= 0) {
+            gameState.powerups[i].active = false;
+            continue;
+        }
+        
+        if (checkCollision(gameState.powerups[i].x, gameState.powerups[i].y, 32, 32, p.x, p.y, 96, 102)) {
+            switch (gameState.powerups[i].type) {
+                case SPEED:
+                    p.speed = p.baseSpeed * 2;
+                    p.speedBoostTimer = 15.0f;
+                    break;
+                case RANGE:
+                    p.vacuumRange = p.baseVacuumRange * 1.5f;
+                    p.rangeBoostTimer = 15.0f;
+                    break;
+                case POWER:
+                    p.vacuumPower *= 1.5f;
+                    p.powerBoostTimer = 15.0f;
+                    break;
+                case EXTRA_LIFE:
+                    p.lives++;
+                    break;
+                case BALL_BREAKER:
+                    for (int j = 0; j < gameState.projectileCount; j++) {
+                        if (gameState.projectiles[j].active && !gameState.projectiles[j].isBallBreaker) {
+                            gameState.projectiles[j].isBallBreaker = true;
+                            break;
+                        }
+                    }
+                    break;
+            }
+            
+            gameState.powerups[i].active = false;
+        }
+    }
+}
+void drawPowerUps(RenderWindow& window, GameStateData& gameState) {
+    for (int i = 0; i < gameState.powerupCount; i++) {
+        if (!gameState.powerups[i].active) continue;
+        
+        RectangleShape powerupRect(Vector2f(32, 32));
+        switch (gameState.powerups[i].type) {
+            case SPEED:
+                powerupRect.setFillColor(Color::Yellow);
+                break;
+            case RANGE:
+                powerupRect.setFillColor(Color::Cyan);
+                break;
+            case POWER:
+                powerupRect.setFillColor(Color::Magenta);
+                break;
+            case EXTRA_LIFE:
+                powerupRect.setFillColor(Color::Green);
+                break;
+            case BALL_BREAKER:
+                powerupRect.setFillColor(Color(255, 100, 255));
+                break;
+        }
+        
+        powerupRect.setPosition(gameState.powerups[i].x, gameState.powerups[i].y);
+        window.draw(powerupRect);
+    }
+}
+
+void updateBoss(GameStateData& gameState, float deltaTime) {
+    Boss& boss = gameState.boss;
+    Player& p = gameState.player;
+    
+    if (!boss.active) return;
+    
+    boss.shootTimer -= deltaTime;
+    if (boss.shootTimer <= 0) {
+        boss.shootTimer = 2.5f;
+        
+        Enemy minion;
+        minion.type = MINION;
+        minion.x = boss.x - 50 + rand() % 100;
+        minion.y = boss.y + 100;
+        minion.velocityX = 2;
+        minion.velocityY = 0;
+        minion.active = true;
+        minion.stunned = false;
+        minion.direction = (rand() % 2 == 0) ? 1 : -1;
+        minion.moveTimer = 0;
+        minion.onGround = false;
+        
+        addEnemy(gameState, minion);
+    }
+    
+    boss.tentacleTimer -= deltaTime;
+    if (boss.tentacleTimer <= 0) {
+        boss.tentacleTimer = 4.0f;
+        
+        bool found = false;
+        for (int i = 0; i < 5; i++) {
+            if (!boss.tentacleActive[i]) {
+                boss.tentacleActive[i] = true;
+                boss.tentacleX[i] = 100 + rand() % (SCREEN_X - 200);
+                boss.tentacleY[i] = SCREEN_Y - 200 - rand() % 200;
+                boss.tentacleDuration[i] = 3.0f + (rand() % 3);
+                found = true;
+                break;
+            }
+        }
+    }
+    
+    for (int i = 0; i < 5; i++) {
+        if (boss.tentacleActive[i]) {
+            boss.tentacleDuration[i] -= deltaTime;
+            if (boss.tentacleDuration[i] <= 0)
+                boss.tentacleActive[i] = false;
+            
+            for (int j = 0; j < gameState.enemyCount; j++) {
+                if (gameState.enemies[j].active && gameState.enemies[j].type == MINION) {
+                    if (checkCollision(boss.tentacleX[i], boss.tentacleY[i], 40, 100,
+                                     gameState.enemies[j].x, gameState.enemies[j].y, 64, 64)) {
+                        gameState.enemies[j].velocityY = -12;
+                        gameState.enemies[j].direction *= -1;
+                        gameState.enemies[j].x += (rand() % 100) - 50;
+                    }
+                }
+            }
+        }
+    }
+    
+    if (boss.health <= 2 && !boss.followMode) {
+        boss.followMode = true;
+        boss.angryMode = true;
+    }
+    
+    if (boss.followMode) {
+        float dx = p.x - boss.x;
+        if (abs(dx) > 50) {
+            boss.x += (dx > 0 ? 1 : -1) * 2;
+        }
+    }
+    
+    for (int i = 0; i < gameState.projectileCount; i++) {
+        if (gameState.projectiles[i].active) {
+            if (checkCollision(gameState.projectiles[i].x, gameState.projectiles[i].y, 32, 32,
+                             boss.x - 50, boss.y, 100, 100)) {
+                boss.health--;
+                gameState.projectiles[i].active = false;
+                p.score += 500;
+                
+                if (boss.health <= 0)
+                    boss.active = false;
+            }
+        }
+    }
+}
+
+void drawBoss(RenderWindow& window, GameStateData& gameState) {
+    Boss& boss = gameState.boss;
+    
+    CircleShape bossCircle(50);
+    if (boss.angryMode)
+        bossCircle.setFillColor(Color(200, 0, 0));
+    else
+        bossCircle.setFillColor(Color(150, 0, 150));
+    bossCircle.setPosition(boss.x - 50, boss.y);
+    window.draw(bossCircle);
+    
+    CircleShape eye1(8);
+    eye1.setFillColor(Color::Red);
+    eye1.setPosition(boss.x - 25, boss.y + 20);
+    window.draw(eye1);
+    
+    CircleShape eye2(8);
+    eye2.setFillColor(Color::Red);
+    eye2.setPosition(boss.x + 15, boss.y + 20);
+    window.draw(eye2);
+    
+    for (int i = 0; i < 5; i++) {
+        if (boss.tentacleActive[i]) {
+            RectangleShape tentacle(Vector2f(40, 100));
+            tentacle.setFillColor(Color(100, 0, 100));
+            tentacle.setPosition(boss.tentacleX[i], boss.tentacleY[i]);
+            window.draw(tentacle);
+        }
+    }
+    
+    RectangleShape healthBarBg(Vector2f(200, 20));
+    healthBarBg.setFillColor(Color(50, 50, 50));
+    healthBarBg.setPosition(boss.x - 100, boss.y - 30);
+    window.draw(healthBarBg);
+    
+    RectangleShape healthBar(Vector2f(200 * boss.health / boss.maxHealth, 20));
+    healthBar.setFillColor(boss.health > 5 ? Color::Green : boss.health > 2 ? Color::Yellow : Color::Red);
+    healthBar.setPosition(boss.x - 100, boss.y - 30);
+    window.draw(healthBar);
+}
+
+void drawUI(RenderWindow& window, GameStateData& gameState, Font& font, float levelTime, bool paused) {
+    Player& p = gameState.player;
+    
+    RectangleShape uiBg(Vector2f(SCREEN_X, 140));
+    uiBg.setFillColor(Color(0, 0, 0, 180));
+    uiBg.setPosition(0, 0);
+    window.draw(uiBg);
+    
+    Text scoreText("Score: " + to_string(p.score), font, 26);
+    scoreText.setPosition(15, 10);
+    scoreText.setFillColor(Color::Yellow);
+    scoreText.setStyle(Text::Bold);
+    window.draw(scoreText);
+    
+    // Display penalty
+    if (gameState.penaltyScore > 0) {
+        Text penaltyText("Penalty: -" + to_string((int)gameState.penaltyScore), font, 20);
+        penaltyText.setPosition(15, 40);
+        penaltyText.setFillColor(Color::Red);
+        window.draw(penaltyText);
+    }
+    
+    Text livesText("Lives: " + to_string(p.lives), font, 26);
+    livesText.setPosition(SCREEN_X - 200, 10);
+    livesText.setFillColor(Color::Green);
+    window.draw(livesText);
+    
+    Text healthText("Health: ", font, 26);
+    healthText.setPosition(SCREEN_X - 200, 45);
+    healthText.setFillColor(Color::Red);
+    window.draw(healthText);
+    
+    for (int i = 0; i < p.health; i++) {
+        CircleShape heart(8);
+        heart.setFillColor(Color::Red);
+        heart.setPosition(SCREEN_X - 120 + i * 25, 53);
+        window.draw(heart);
+    }
+    
+    Text capturedText("Captured: " + to_string(p.capturedCount), font, 26);
+    capturedText.setPosition(SCREEN_X - 200, 80);
+    capturedText.setFillColor(Color::Cyan);
+    window.draw(capturedText);
+    
+    Text levelText("Level " + to_string(gameState.currentLevel), font, 30);
+    levelText.setPosition(SCREEN_X/2 - 60, 10);
+    levelText.setFillColor(Color::White);
+    levelText.setStyle(Text::Bold);
+    window.draw(levelText);
+    
+    int minutes = (int)levelTime / 60;
+    int seconds = (int)levelTime % 60;
+    Text timeText("Time: " + to_string(minutes) + ":" + (seconds < 10 ? "0" : "") + to_string(seconds), font, 26);
+    timeText.setPosition(SCREEN_X/2 - 60, 50);
+    timeText.setFillColor(Color::White);
+    window.draw(timeText);
+    
+    if (gameState.isSliding) {
+        Text slideText("SLIDING!", font, 20);
+        slideText.setPosition(SCREEN_X/2 - 40, 90);
+        slideText.setFillColor(Color(255, 150, 50));
+        window.draw(slideText);
+    }
+    
+    if (p.combo > 2) {
+        Text comboText("COMBO x" + to_string(p.combo) + "!", font, 35);
+        comboText.setPosition(SCREEN_X/2 - 100, 150);
+        comboText.setFillColor(Color::Yellow);
+        comboText.setStyle(Text::Bold);
+        comboText.setOutlineColor(Color::Red);
+        comboText.setOutlineThickness(2);
+        window.draw(comboText);
+    }
+    
+    if (p.speedBoostTimer > 0) {
+        Text boostText("SPEED!", font, 20);
+        boostText.setPosition(15, 90);
+        boostText.setFillColor(Color::Yellow);
+        window.draw(boostText);
+    }
+    if (p.rangeBoostTimer > 0) {
+        Text boostText("RANGE!", font, 20);
+        boostText.setPosition(15, 115);
+        boostText.setFillColor(Color::Cyan);
+        window.draw(boostText);
+    }
+    if (p.powerBoostTimer > 0) {
+        Text boostText("POWER!", font, 20);
+        boostText.setPosition(90, 90);
+        boostText.setFillColor(Color::Magenta);
+        window.draw(boostText);
+    }
+}
+
+bool checkCollision(float x1, float y1, float w1, float h1, float x2, float y2, float w2, float h2) {
+    return (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2);
+}
+
+int calculateLevelScore(GameStateData& gameState, float levelTime) {
+    Player& p = gameState.player;
+    int level = gameState.currentLevel;
+    int bonus = 0;
+    
+    if (level == 1) {
+        bonus += 1000;
+        if (p.damageTaken == 0) bonus += 1500;
+        if (levelTime < 30) bonus += 2000;
+        else if (levelTime < 45) bonus += 1000;
+        else if (levelTime < 60) bonus += 500;
+    }
+    else if (level == 2) {
+        bonus += 2000;
+        if (p.damageTaken == 0) bonus += 2500;
+        if (levelTime < 60) bonus += 3000;
+        else if (levelTime < 90) bonus += 1500;
+        else if (levelTime < 120) bonus += 750;
+    }
+    else if (level == 3) {
+        bonus += 5000;
+        if (p.damageTaken == 0) bonus += 5000;
+        if (levelTime < 120) bonus += 5000;
+        else if (levelTime < 180) bonus += 2500;
+    }
+    
+    return bonus;
+}
+
+void resizeLevelForBoss(char**& lvl, int& height, int& width, int& cellSize) {
+    for (int i = 0; i < height; i++)
+        delete[] lvl[i];
+    delete[] lvl;
+    
+    height = (int)(height * 1.5);
+    width = (int)(width * 1.5);
+    cellSize = (int)(cellSize / 1.5);
+    
+    lvl = new char*[height];
+    for (int i = 0; i < height; i++) {
+        lvl[i] = new char[width];
+        for (int j = 0; j < width; j++) {
+            lvl[i][j] = ' ';
+        }
+    }
+}
+
+void saveLeaderboard(const string& name, int score) {
+    ofstream file("leaderboard.txt", ios::app);
+    if (file.is_open()) {
+        file << name << " " << score << endl;
+        file.close();
+    }
+}
+
+void loadLeaderboard(vector<LeaderboardEntry>& leaderboard) {
+    ifstream file("leaderboard.txt");
+    if (file.is_open()) {
+        string name;
+        int score;
+        while (file >> name >> score) {
+            LeaderboardEntry entry;
+            entry.name = name;
+            entry.score = score;
+            leaderboard.push_back(entry);
+        }
+        file.close();
+    }
+}
+
+int main() {
+    srand(time(0));
+    
+    RenderWindow window(VideoMode(SCREEN_X, SCREEN_Y), "Tumble-POP Phase 2 - A++ Grade", Style::Default);
+    window.setVerticalSyncEnabled(true);
+    window.setFramerateLimit(60);
+
+    // Game state (NO GLOBAL VARIABLES)
+    GameStateData gameState;
+    
+    // Dynamic level array
+    gameState.levelGrid = new char*[HEIGHT];
+    for (int i = 0; i < HEIGHT; i++) {
+        gameState.levelGrid[i] = new char[WIDTH];
+        for (int j = 0; j < WIDTH; j++) {
+            gameState.levelGrid[i][j] = ' ';
+        }
+    }
+
+    // Load textures
+    Texture bgTex, bgTex2, bgTex3, blockTexture, playerTex, softBlockTex;
+    Texture ghostTex, skelTex, invisTex, chelnovTex;
+    
+    if (!bgTex.loadFromFile("Data/bg.png")) {
+        Image img;
+        img.create(SCREEN_X, SCREEN_Y, Color(50, 100, 150));
+        bgTex.loadFromImage(img);
+    }
+    
+    if (!bgTex2.loadFromFile("Data/bg.png")) {
+        Image img;
+        img.create(SCREEN_X, SCREEN_Y, Color(100, 50, 100));
+        bgTex2.loadFromImage(img);
+    }
+    
+    if (!bgTex3.loadFromFile("Data/bg.png")) {
+        Image img;
+        img.create(SCREEN_X, SCREEN_Y, Color(20, 20, 50));
+        bgTex3.loadFromImage(img);
+    }
+    
+    if (!blockTexture.loadFromFile("Data/block1.png")) {
+        Image img;
+        img.create(CELL_SIZE, CELL_SIZE, Color(100, 100, 100));
+        blockTexture.loadFromImage(img);
+    }
+    
+    if (!softBlockTex.loadFromFile("Data/block1.png")) {
+        Image img;
+        img.create(CELL_SIZE, CELL_SIZE, Color(150, 100, 100));
+        softBlockTex.loadFromImage(img);
+    }
+    
+    if (!playerTex.loadFromFile("Data/player.png")) {
+        Image img;
+        img.create(32, 34, Color(255, 200, 0));
+        playerTex.loadFromImage(img);
+    }
+    
+    if (!ghostTex.loadFromFile("Data/ghost.png")) {
+        Image ghostImg;
+        ghostImg.create(32, 32, Color::White);
+        ghostTex.loadFromImage(ghostImg);
+    }
+    
+    if (!skelTex.loadFromFile("Data/skeleton.png")) {
+        Image skelImg;
+        skelImg.create(32, 32, Color(220, 220, 220));
+        skelTex.loadFromImage(skelImg);
+    }
+    
+    if (!invisTex.loadFromFile("Data/invisible.png")) {
+        Image invisImg;
+        invisImg.create(32, 32, Color(150, 150, 255, 180));
+        invisTex.loadFromImage(invisImg);
+    }
+    
+    if (!chelnovTex.loadFromFile("Data/chelnov.png")) {
+        Image chelnovImg;
+        chelnovImg.create(32, 32, Color(255, 150, 150));
+        chelnovTex.loadFromImage(chelnovImg);
+    }
+    
+    Sprite bgSprite(bgTex);
+    Sprite bgSprite2(bgTex2);
+    Sprite bgSprite3(bgTex3);
+    Sprite blockSprite(blockTexture);
+    Sprite softBlockSprite(softBlockTex);
+    Sprite playerSprite(playerTex);
+    Sprite ghostSprite(ghostTex);
+    Sprite skelSprite(skelTex);
+    Sprite invisSprite(invisTex);
+    Sprite chelnovSprite(chelnovTex);
+    
+    playerSprite.setScale(3, 3);
+    ghostSprite.setScale(2, 2);
+    skelSprite.setScale(2, 2);
+    invisSprite.setScale(2, 2);
+    chelnovSprite.setScale(2, 2);
+    
+    playerSprite.setOrigin(16, 17);
+    ghostSprite.setOrigin(16, 16);
+    skelSprite.setOrigin(16, 16);
+    invisSprite.setOrigin(16, 16);
+    chelnovSprite.setOrigin(16, 16);
+
+    Music lvlMusic, lvlMusic2, bossMusic;
+    
+    if (lvlMusic.openFromFile("Data/mus.ogg")) {
+        lvlMusic.setVolume(20);
+        lvlMusic.setLoop(true);
+    }
+    
+    if (lvlMusic2.openFromFile("Data/mus.ogg")) {
+        lvlMusic2.setVolume(20);
+        lvlMusic2.setLoop(true);
+    }
+    
+    if (bossMusic.openFromFile("Data/mus.ogg")) {
+        bossMusic.setVolume(25);
+        bossMusic.setLoop(true);
+    }
+
+    Font font;
+    if (!font.loadFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")) {
+        font.loadFromFile("C:/Windows/Fonts/arial.ttf");
+    }
+
+    bool characterSelected = false;
+    Clock clock;
+    Clock levelTimer;
+    float levelTime = 0;
+    
+    vector<LeaderboardEntry> leaderboard;
+    loadLeaderboard(leaderboard);
+
+    // Main loop
+    while (window.isOpen()) {
+        float deltaTime = clock.restart().asSeconds();
+        if (deltaTime > 0.1f) deltaTime = 0.1f;
+
+        Event ev;
+        while (window.pollEvent(ev)) {
+            if (ev.type == Event::Closed) 
+                window.close();
+
+            if (ev.type == Event::KeyPressed) {
+                // Pause
+                if ((gameState.currentState == LEVEL1 || gameState.currentState == LEVEL2 || 
+                     gameState.currentState == BOSS_LEVEL) && ev.key.code == Keyboard::P) {
+                    if (gameState.currentState == PAUSED) {
+                        gameState.currentState = (gameState.currentLevel == 1) ? LEVEL1 : 
+                                                (gameState.currentLevel == 2) ? LEVEL2 : BOSS_LEVEL;
+                    } else {
+                        gameState.currentState = PAUSED;
+                    }
+                }
+                
+                // Character selection
+                if (gameState.currentState == MENU && !characterSelected) {
+                    if (ev.key.code == Keyboard::Num1) {
+                        gameState.player.isYellow = true;
+                        gameState.player.baseSpeed = 7.5f;
+                        gameState.player.speed = 7.5f;
+                        gameState.player.baseVacuumRange = 100.0f;
+                        gameState.player.vacuumRange = 100.0f;
+                        gameState.player.vacuumPower = 1.0f;
+                        characterSelected = true;
+                        gameState.currentState = LEVEL1;
+                        gameState.currentLevel = 1;
+                        initLevel(gameState.levelGrid, 1);
+                        levelTimer.restart();
+                        levelTime = 0;
+                        
+                        if (lvlMusic.getStatus() != Music::Playing)
+                            lvlMusic.play();
+                        
+                        gameState.enemyCount = 0;
+                        gameState.totalEnemiesInLevel = 12;
+                        for (int i = 0; i < 8; i++) {
+                            Enemy e;
+                            e.type = GHOST;
+                            e.x = 100 + (i % 4) * 250;
+                            e.y = 150 + (i / 4) * 300;
+                            e.velocityX = 2;
+                            e.velocityY = 0;
+                            e.active = true;
+                            e.stunned = false;
+                            e.direction = (i % 2 == 0) ? 1 : -1;
+                            e.moveTimer = 0;
+                            e.onGround = false;
+                            addEnemy(gameState, e);
+                        }
+                        for (int i = 0; i < 4; i++) {
+                            Enemy e;
+                            e.type = SKELETON;
+                            e.x = 150 + i * 250;
+                            e.y = 400;
+                            e.velocityX = 2.5f;
+                            e.velocityY = 0;
+                            e.active = true;
+                            e.stunned = false;
+                            e.direction = (i % 2 == 0) ? -1 : 1;
+                            e.moveTimer = 0;
+                            e.jumpTimer = 0;
+                            e.onGround = false;
+                            addEnemy(gameState, e);
+                        }
+                    }
+                    else if (ev.key.code == Keyboard::Num2) {
+                        gameState.player.isYellow = false;
+                        gameState.player.baseSpeed = 5.0f;
+                        gameState.player.speed = 5.0f;
+                        gameState.player.baseVacuumRange = 120.0f;
+                        gameState.player.vacuumRange = 120.0f;
+                        gameState.player.vacuumPower = 1.2f;
+                        characterSelected = true;
+                        gameState.currentState = LEVEL1;
+                        gameState.currentLevel = 1;
+                        initLevel(gameState.levelGrid, 1);
+                        levelTimer.restart();
+                        levelTime = 0;
+                        
+                        if (lvlMusic.getStatus() != Music::Playing)
+                            lvlMusic.play();
+                        
+                        gameState.enemyCount = 0;
+                        gameState.totalEnemiesInLevel = 12;
+                        for (int i = 0; i < 8; i++) {
+                            Enemy e;
+                            e.type = GHOST;
+                            e.x = 100 + (i % 4) * 250;
+                            e.y = 150 + (i / 4) * 300;
+                            e.velocityX = 2;
+                            e.velocityY = 0;
+                            e.active = true;
+                            e.stunned = false;
+                            e.direction = (i % 2 == 0) ? 1 : -1;
+                            e.moveTimer = 0;
+                            e.onGround = false;
+                            addEnemy(gameState, e);
+                        }
+                        for (int i = 0; i < 4; i++) {
+                            Enemy e;
+                            e.type = SKELETON;
+                            e.x = 150 + i * 250;
+                            e.y = 400;
+                            e.velocityX = 2.5f;
+                            e.velocityY = 0;
+                            e.active = true;
+                            e.stunned = false;
+                            e.direction = (i % 2 == 0) ? -1 : 1;
+                            e.moveTimer = 0;
+                            e.jumpTimer = 0;
+                            e.onGround = false;
+                            addEnemy(gameState, e);
+                        }
+                    }
+                }
+
+                // Shoot
+                if (ev.key.code == Keyboard::E && gameState.player.capturedCount > 0 && gameState.currentState != PAUSED) {
+                    shootProjectile(gameState);
+                }
+
+                // Vacuum burst
+                if (ev.key.code == Keyboard::Q && gameState.player.capturedCount > 0 && gameState.currentState != PAUSED) {
+                    int burstCount = gameState.player.capturedCount;
+                    while (gameState.player.capturedCount > 0) {
+                        shootProjectile(gameState);
+                    }
+                    if (burstCount >= 3)
+                        gameState.player.score += 300;
+                }
+                
+                // Restart
+                if (gameState.currentState == GAMEOVER && ev.key.code == Keyboard::R) {
+                    saveLeaderboard("Player", gameState.player.score);
+                    gameState.player.reset(true);
+                    gameState.currentState = MENU;
+                    characterSelected = false;
+                    lvlMusic.stop();
+                    lvlMusic2.stop();
+                    bossMusic.stop();
+                    gameState.cleanup();
+                    gameState = GameStateData();
+                }
+                
+                // Continue after level
+                if (gameState.currentState == WIN && ev.key.code == Keyboard::Space) {
+                    if (gameState.currentLevel == 1) {
+                        gameState.currentLevel = 2;
+                        gameState.currentState = LEVEL2;
+                        initLevel(gameState.levelGrid, 2);
+                        gameState.player.reset(false);
+                        levelTimer.restart();
+                        levelTime = 0;
+                        gameState.enemySpawnTimer = 0;
+                        
+                        lvlMusic.stop();
+                        if (lvlMusic2.getStatus() != Music::Playing)
+                            lvlMusic2.play();
+                        
+                        gameState.enemyCount = 0;
+                        gameState.totalEnemiesInLevel = 20;
+                        
+                        // Initialize cloud platform for level 2
+                        gameState.cloudPlatform.init(SCREEN_X / 2, 300);
+                    }
+                    else if (gameState.currentLevel == 2) {
+                        gameState.currentLevel = 3;
+                        gameState.currentState = BOSS_LEVEL;
+                        
+                        resizeLevelForBoss(gameState.levelGrid, HEIGHT, WIDTH, CELL_SIZE);
+                        initLevel(gameState.levelGrid, 3);
+                        
+                        gameState.player.reset(false);
+                        levelTimer.restart();
+                        levelTime = 0;
+                        
+                        lvlMusic2.stop();
+                        if (bossMusic.getStatus() != Music::Playing)
+                            bossMusic.play();
+                        
+                        gameState.boss.reset();
+                        gameState.boss.active = true;
+                        gameState.boss.x = SCREEN_X / 2;
+                        gameState.boss.y = 150;
+                        gameState.boss.shootTimer = 3.0f;
+                        
+                        gameState.enemyCount = 0;
+                    }
+                    else {
+                        gameState.currentState = MENU;
+                        characterSelected = false;
+                        bossMusic.stop();
+                    }
+                }
+                
+                // Jump
+                if ((gameState.currentState == LEVEL1 || gameState.currentState == LEVEL2 || 
+                     gameState.currentState == BOSS_LEVEL) && ev.key.code == Keyboard::Up && 
+                    (gameState.player.onGround || gameState.player.onCloudPlatform)) {
+                    gameState.player.velocityY = JUMP_STRENGTH;
+                    gameState.player.onGround = false;
+                    gameState.player.onCloudPlatform = false;
+                }
+            }
+        }
+
+        if (Keyboard::isKeyPressed(Keyboard::Escape))
+            window.close();
+
+        window.clear();
+
+        // Menu
+        if (gameState.currentState == MENU && !characterSelected) {
+            Text title("TUMBLE POP - PHASE 2 (A++ GRADE)", font, 60);
+            title.setPosition(SCREEN_X/2 - 350, 100);
+            title.setFillColor(Color::Yellow);
+            title.setStyle(Text::Bold);
+            
+            Text subtitle("Choose Your Hero!", font, 30);
+            subtitle.setPosition(SCREEN_X/2 - 150, 200);
+            subtitle.setFillColor(Color::White);
+            
+            Text inst1("Press 1: Yellow (Fast, 360° Rotation)", font, 26);
+            inst1.setPosition(200, 300);
+            inst1.setFillColor(Color::Yellow);
+            
+            Text inst2("Press 2: Green (Strong Vacuum)", font, 26);
+            inst2.setPosition(200, 350);
+            inst2.setFillColor(Color::Green);
+            
+            Text features("FEATURES: No Global Variables, Cloud Platform, Sliding Mechanics", font, 22);
+            features.setPosition(150, 450);
+            features.setFillColor(Color::Cyan);
+            
+            Text features2("Penalty System, Dynamic Memory, Boss Level, Soft Tiles", font, 22);
+            features2.setPosition(150, 480);
+            features2.setFillColor(Color::Cyan);
+
+            window.draw(title);
+            window.draw(subtitle);
+            window.draw(inst1);
+            window.draw(inst2);
+            window.draw(features);
+            window.draw(features2);
+        }
+        else if (gameState.currentState == GAMEOVER) {
+            Text gameOver("GAME OVER", font, 80);
+            gameOver.setPosition(SCREEN_X/2 - 250, 250);
+            gameOver.setFillColor(Color::Red);
+            gameOver.setStyle(Text::Bold);
+            
+            Text finalScore("Final Score: " + to_string(gameState.player.score), font, 40);
+            finalScore.setPosition(SCREEN_X/2 - 180, 370);
+            finalScore.setFillColor(Color::White);
+            
+            Text penaltyText("Total Penalties: -" + to_string((int)gameState.penaltyScore), font, 30);
+            penaltyText.setPosition(SCREEN_X/2 - 180, 420);
+            penaltyText.setFillColor(Color::Red);
+            
+            Text restart("Press R to Restart", font, 30);
+            restart.setPosition(SCREEN_X/2 - 150, 500);
+            restart.setFillColor(Color::Yellow);
+            
+            window.draw(gameOver);
+            window.draw(finalScore);
+            window.draw(penaltyText);
+            window.draw(restart);
+        }
+        else if (gameState.currentState == WIN) {
+            Text winText("LEVEL COMPLETE!", font, 70);
+            winText.setPosition(SCREEN_X/2 - 280, 200);
+            winText.setFillColor(Color::Green);
+            winText.setStyle(Text::Bold);
+            
+            int levelBonus = calculateLevelScore(gameState, levelTime);
+            
+            Text scoreText("Level Score: " + to_string(levelBonus), font, 35);
+            scoreText.setPosition(SCREEN_X/2 - 180, 320);
+            scoreText.setFillColor(Color::White);
+            
+            Text totalText("Total Score: " + to_string(gameState.player.score), font, 35);
+            totalText.setPosition(SCREEN_X/2 - 180, 380);
+            totalText.setFillColor(Color::Yellow);
+            
+            Text penaltyText("Penalties: -" + to_string((int)gameState.penaltyScore), font, 30);
+            penaltyText.setPosition(SCREEN_X/2 - 180, 440);
+            penaltyText.setFillColor(Color(255, 100, 100));
+            
+            Text nextText;
+            if (gameState.currentLevel == 1) {
+                nextText.setString("Press SPACE for Level 2 (Cloud Platform!)");
+                nextText.setFillColor(Color::Green);
+            }
+            else if (gameState.currentLevel == 2) {
+                nextText.setString("Press SPACE for BOSS BATTLE!");
+                nextText.setFillColor(Color::Red);
+            }
+            else {
+                nextText.setString("YOU WIN! Press SPACE to Menu");
+                nextText.setFillColor(Color::Cyan);
+            }
+            nextText.setFont(font);
+            nextText.setCharacterSize(30);
+            nextText.setPosition(SCREEN_X/2 - 220, 520);
+            
+            window.draw(winText);
+            window.draw(scoreText);
+            window.draw(totalText);
+            window.draw(penaltyText);
+            window.draw(nextText);
+        }
+        else if (gameState.currentState == PAUSED) {
+            if (gameState.currentLevel == 1)
+                displayLevel(window, gameState.levelGrid, bgTex, bgSprite, blockTexture, blockSprite, softBlockTex, softBlockSprite);
+            else if (gameState.currentLevel == 2)
+                displayLevel(window, gameState.levelGrid, bgTex2, bgSprite2, blockTexture, blockSprite, softBlockTex, softBlockSprite);
+            else
+                displayLevel(window, gameState.levelGrid, bgTex3, bgSprite3, blockTexture, blockSprite, softBlockTex, softBlockSprite);
+            
+            RectangleShape overlay(Vector2f(SCREEN_X, SCREEN_Y));
+            overlay.setFillColor(Color(0, 0, 0, 150));
+            window.draw(overlay);
+            
+            Text pauseText("PAUSED", font, 80);
+            pauseText.setPosition(SCREEN_X/2 - 180, 300);
+            pauseText.setFillColor(Color::Yellow);
+            pauseText.setStyle(Text::Bold);
+            
+            Text resumeText("Press P to Resume", font, 30);
+            resumeText.setPosition(SCREEN_X/2 - 150, 450);
+            resumeText.setFillColor(Color::White);
+            
+            window.draw(pauseText);
+            window.draw(resumeText);
+        }
+        else if (gameState.currentState == LEVEL1 || gameState.currentState == LEVEL2 || gameState.currentState == BOSS_LEVEL) {
+            levelTime = levelTimer.getElapsedTime().asSeconds();
+            
+            // Player movement
+            gameState.player.isMoving = false;
+            if (Keyboard::isKeyPressed(Keyboard::Left)) {
+                gameState.player.x -= gameState.player.speed;
+                gameState.player.facingRight = false;
+                gameState.player.isMoving = true;
+            }
+            if (Keyboard::isKeyPressed(Keyboard::Right)) {
+                gameState.player.x += gameState.player.speed;
+                gameState.player.facingRight = true;
+                gameState.player.isMoving = true;
+            }
+
+            // Vacuum angle control
+            if (gameState.player.isYellow) {
+                float targetAngle = gameState.player.vacuumAngle;
+                
+                if (Keyboard::isKeyPressed(Keyboard::W)) targetAngle = -M_PI / 2;
+                else if (Keyboard::isKeyPressed(Keyboard::S)) targetAngle = M_PI / 2;
+                else if (Keyboard::isKeyPressed(Keyboard::A)) targetAngle = M_PI;
+                else if (Keyboard::isKeyPressed(Keyboard::D)) targetAngle = 0;
+                
+                float angleDiff = targetAngle - gameState.player.vacuumAngle;
+                while (angleDiff > M_PI) angleDiff -= 2 * M_PI;
+                while (angleDiff < -M_PI) angleDiff += 2 * M_PI;
+                
+                float rotationSpeed = 0.15f;
+                if (abs(angleDiff) < rotationSpeed) {
+                    gameState.player.vacuumAngle = targetAngle;
+                } else {
+                    gameState.player.vacuumAngle += (angleDiff > 0 ? rotationSpeed : -rotationSpeed);
+                }
+            } else {
+                if (Keyboard::isKeyPressed(Keyboard::W)) gameState.player.vacuumAngle = -M_PI / 2;
+                if (Keyboard::isKeyPressed(Keyboard::S)) gameState.player.vacuumAngle = M_PI / 2;
+                if (Keyboard::isKeyPressed(Keyboard::A)) gameState.player.vacuumAngle = M_PI;
+                if (Keyboard::isKeyPressed(Keyboard::D)) gameState.player.vacuumAngle = 0;
+            }
+
+            gameState.player.vacuuming = Keyboard::isKeyPressed(Keyboard::Space);
+
+            // Level 2 spawning
+            if (gameState.currentState == LEVEL2) {
+                gameState.enemySpawnTimer += deltaTime;
+                static int ghostsSpawned = 0, skelsSpawned = 0, invisSpawned = 0, chelnovSpawned = 0;
+                
+                if (gameState.enemySpawnTimer > 3.0f && (ghostsSpawned + skelsSpawned + invisSpawned + chelnovSpawned) < 20) {
+                    gameState.enemySpawnTimer = 0;
+                    Enemy e;
+                    e.active = true;
+                    e.stunned = false;
+                    e.x = (rand() % 2 == 0) ? 50 : SCREEN_X - 100;
+                    e.y = 100 + rand() % 300;
+                    e.velocityY = 0;
+                    e.direction = (e.x < SCREEN_X/2) ? 1 : -1;
+                    e.moveTimer = 0;
+                    e.onGround = false;
+                    
+                    if (ghostsSpawned < 4) {
+                        e.type = GHOST;
+                        e.velocityX = 2;
+                        ghostsSpawned++;
+                        addEnemy(gameState, e);
+                    } else if (skelsSpawned < 9) {
+                        e.type = SKELETON;
+                        e.velocityX = 2.5f;
+                        e.jumpTimer = 0;
+                        skelsSpawned++;
+                        addEnemy(gameState, e);
+                    } else if (invisSpawned < 3) {
+                        e.type = INVISIBLE_MAN;
+                        e.velocityX = 2.2f;
+                        e.invisible = false;
+                        e.invisTimer = 0;
+                        e.teleportTimer = 5.0f + rand() % 5;
+                        invisSpawned++;
+                        addEnemy(gameState, e);
+                    } else if (chelnovSpawned < 4) {
+                        e.type = CHELNOV;
+                        e.velocityX = 1.8f;
+                        e.shootTimer = 4.0f;
+                        e.canShoot = true;
+                        chelnovSpawned++;
+                        addEnemy(gameState, e);
+                    }
+                }
+                
+                // Update cloud platform
+                gameState.cloudPlatform.update(deltaTime, gameState.enemies, gameState.enemyCount);
+            }
+
+            // Update game objects
+            playerPhysics(gameState.player, gameState.levelGrid, gameState.cloudPlatform, deltaTime, gameState);
+            updateEnemies(gameState, gameState.levelGrid, deltaTime);
+            
+            if (gameState.currentState == BOSS_LEVEL && gameState.boss.active)
+                updateBoss(gameState, deltaTime);
+            
+            if (gameState.player.vacuuming)
+                handleVacuum(gameState, deltaTime);
+                
+            updateProjectiles(gameState, gameState.levelGrid, deltaTime);
+            updateEnemyProjectiles(gameState, deltaTime);
+            updatePowerUps(gameState, deltaTime);
+
+            // Animation
+            if (gameState.player.isMoving) {
+                gameState.player.animationTimer += deltaTime * 10;
+                if (gameState.player.animationTimer >= 4) {
+                    gameState.player.animationTimer = 0;
+                    gameState.player.currentFrame = (gameState.player.currentFrame + 1) % 4;
+                }
+            } else {
+                gameState.player.currentFrame = 0;
+                gameState.player.animationTimer = 0;
+            }
+            
+            // Timers
+            if (gameState.player.comboTimer > 0)
+                gameState.player.comboTimer -= deltaTime;
+            else
+                gameState.player.combo = 0;
+            
+            if (gameState.player.speedBoostTimer > 0) {
+                gameState.player.speedBoostTimer -= deltaTime;
+                if (gameState.player.speedBoostTimer <= 0)
+                    gameState.player.speed = gameState.player.baseSpeed;
+            }
+            if (gameState.player.rangeBoostTimer > 0) {
+                gameState.player.rangeBoostTimer -= deltaTime;
+                if (gameState.player.rangeBoostTimer <= 0)
+                    gameState.player.vacuumRange = gameState.player.baseVacuumRange;
+            }
+            if (gameState.player.powerBoostTimer > 0) {
+                gameState.player.powerBoostTimer -= deltaTime;
+                if (gameState.player.powerBoostTimer <= 0)
+                    gameState.player.vacuumPower = (gameState.player.isYellow ? 1.0f : 1.2f);
+            }
+
+            // Check level completion
+            int activeEnemies = 0;
+            for (int i = 0; i < gameState.enemyCount; i++)
+                if (gameState.enemies[i].active) activeEnemies++;
+            
+            if (gameState.currentState == BOSS_LEVEL) {
+                if (!gameState.boss.active || gameState.boss.health <= 0) {
+                    int levelBonus = calculateLevelScore(gameState, levelTime);
+                    gameState.player.score += levelBonus + 5000;
+                    gameState.currentState = WIN;
+                }
+            } else if (activeEnemies == 0 && ((gameState.currentState == LEVEL1) || 
+                (gameState.currentState == LEVEL2 && gameState.enemyCount >= gameState.totalEnemiesInLevel))) {
+                int levelBonus = calculateLevelScore(gameState, levelTime);
+                gameState.player.score += levelBonus;
+                gameState.currentState = WIN;
+            }
+            
+            if (gameState.player.lives <= 0) {
+                gameState.currentState = GAMEOVER;
+                lvlMusic.stop();
+                lvlMusic2.stop();
+                bossMusic.stop();
+            }
+
+            // Draw
+            if (gameState.currentLevel == 1)
+                displayLevel(window, gameState.levelGrid, bgTex, bgSprite, blockTexture, blockSprite, softBlockTex, softBlockSprite);
+            else if (gameState.currentLevel == 2) {
+                displayLevel(window, gameState.levelGrid, bgTex2, bgSprite2, blockTexture, blockSprite, softBlockTex, softBlockSprite);
+                gameState.cloudPlatform.draw(window);
+            }
+            else
+                displayLevel(window, gameState.levelGrid, bgTex3, bgSprite3, blockTexture, blockSprite, softBlockTex, softBlockSprite);
+            
+            if (gameState.currentState == BOSS_LEVEL && gameState.boss.active)
+                drawBoss(window, gameState);
+                
+            drawEnemies(window, gameState, 
+                       ghostTex, skelTex, invisTex, chelnovTex,
+                       ghostSprite, skelSprite, invisSprite, chelnovSprite);
+            
+            // Draw projectiles
+            for (int i = 0; i < gameState.enemyProjectileCount; i++) {
+                if (gameState.enemyProjectiles[i].active) {
+                    CircleShape projCircle(8);
+                    projCircle.setFillColor(Color::Red);
+                    projCircle.setPosition(gameState.enemyProjectiles[i].x, gameState.enemyProjectiles[i].y);
+                    window.draw(projCircle);
+                }
+            }
+            
+            for (int i = 0; i < gameState.projectileCount; i++) {
+                if (gameState.projectiles[i].active) {
+                    CircleShape projCircle(16);
+                    if (gameState.projectiles[i].isBallBreaker)
+                        projCircle.setFillColor(Color(255, 100, 255));
+                    else if (gameState.projectiles[i].enemyType == GHOST)
+                        projCircle.setFillColor(Color::White);
+                    else if (gameState.projectiles[i].enemyType == SKELETON)
+                        projCircle.setFillColor(Color(220, 220, 220));
+                    else if (gameState.projectiles[i].enemyType == INVISIBLE_MAN)
+                        projCircle.setFillColor(Color(150, 150, 255));
+                    else
+                        projCircle.setFillColor(Color(255, 150, 150));
+                    projCircle.setPosition(gameState.projectiles[i].x, gameState.projectiles[i].y);
+                    window.draw(projCircle);
+                }
+            }
+
+            drawPowerUps(window, gameState);
+            drawPlayer(window, gameState.player, playerTex, playerSprite);
+            drawUI(window, gameState, font, levelTime, false);
+        }
+
+        window.display();
+    }
+
+    // Cleanup
+    lvlMusic.stop();
+    lvlMusic2.stop();
+    bossMusic.stop();
+    
+    // Save final score
+    if (gameState.player.score > 0) {
+        saveLeaderboard("Player", gameState.player.score);
+    }
+
+    return 0;
+}
