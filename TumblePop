@@ -9,7 +9,7 @@
 #include <vector>
 #include <sstream>
 
-using namespace sf;
+using namespace sf; 
 using namespace std;
 
 int SCREEN_X = 1152;
