@@ -1423,86 +1423,59 @@ void loadLeaderboard(vector<LeaderboardEntry>& leaderboard) {
 int main() {
     srand(time(0));
     
-    RenderWindow window(VideoMode(SCREEN_X, SCREEN_Y), "Tumble-POP Phase 2 - A++ Grade", Style::Default);
+    RenderWindow window(VideoMode(SCREEN_X, SCREEN_Y), "Tumble-POP Phase 2", Style::Default);
     window.setVerticalSyncEnabled(true);
-    window.setFramerateLimit(60);
-
-    // Game state (NO GLOBAL VARIABLES)
-    GameStateData gameState;
-    
-    // Dynamic level array
-    gameState.levelGrid = new char*[HEIGHT];
-    for (int i = 0; i < HEIGHT; i++) {
+    window.setFramerateLimit(60);//frame limit is set to 60 per seconds
+        GameStateData gameState;
+    gameState.levelGrid = new char*[HEIGHT];//creates a dynamic 2d srray
+    for (int i = 0; i < HEIGHT; i++) {//set up a empty map 
         gameState.levelGrid[i] = new char[WIDTH];
         for (int j = 0; j < WIDTH; j++) {
-            gameState.levelGrid[i][j] = ' ';
-        }
-    }
+            gameState.levelGrid[i][j] = ' ';}}
 
-    // Load textures
     Texture bgTex, bgTex2, bgTex3, blockTexture, playerTex, softBlockTex;
-    Texture ghostTex, skelTex, invisTex, chelnovTex;
-    
-    if (!bgTex.loadFromFile("Data/bg.png")) {
+    Texture ghostTex, skelTex, invisTex, chelnovTex;//declare sfml textures
+    //if images doesnt load from file then just use plain image(used for all the images)
+        if (!bgTex.loadFromFile("Data/bg.png")) {
         Image img;
         img.create(SCREEN_X, SCREEN_Y, Color(50, 100, 150));
-        bgTex.loadFromImage(img);
-    }
-    
-    if (!bgTex2.loadFromFile("Data/bg.png")) {
+        bgTex.loadFromImage(img);}
+        if (!bgTex2.loadFromFile("Data/bg.png")) {
         Image img;
         img.create(SCREEN_X, SCREEN_Y, Color(100, 50, 100));
-        bgTex2.loadFromImage(img);
-    }
-    
-    if (!bgTex3.loadFromFile("Data/bg.png")) {
+        bgTex2.loadFromImage(img);}
+        if (!bgTex3.loadFromFile("Data/bg.png")) {
         Image img;
         img.create(SCREEN_X, SCREEN_Y, Color(20, 20, 50));
-        bgTex3.loadFromImage(img);
-    }
-    
-    if (!blockTexture.loadFromFile("Data/block1.png")) {
+        bgTex3.loadFromImage(img);}
+        if (!blockTexture.loadFromFile("Data/block1.png")) {
         Image img;
         img.create(CELL_SIZE, CELL_SIZE, Color(100, 100, 100));
-        blockTexture.loadFromImage(img);
-    }
-    
-    if (!softBlockTex.loadFromFile("Data/block1.png")) {
-        Image img;
+        blockTexture.loadFromImage(img);}    
+        if (!softBlockTex.loadFromFile("Data/block1.png")) {Image img;
         img.create(CELL_SIZE, CELL_SIZE, Color(150, 100, 100));
-        softBlockTex.loadFromImage(img);
-    }
-    
-    if (!playerTex.loadFromFile("Data/player.png")) {
+        softBlockTex.loadFromImage(img);}
+        if (!playerTex.loadFromFile("Data/player.png")) {
         Image img;
         img.create(32, 34, Color(255, 200, 0));
-        playerTex.loadFromImage(img);
-    }
-    
-    if (!ghostTex.loadFromFile("Data/ghost.png")) {
+        playerTex.loadFromImage(img);}    
+        if (!ghostTex.loadFromFile("Data/ghost.png")) {
         Image ghostImg;
         ghostImg.create(32, 32, Color::White);
-        ghostTex.loadFromImage(ghostImg);
-    }
-    
-    if (!skelTex.loadFromFile("Data/skeleton.png")) {
+        ghostTex.loadFromImage(ghostImg);}
+         if (!skelTex.loadFromFile("Data/skeleton.png")) {
         Image skelImg;
         skelImg.create(32, 32, Color(220, 220, 220));
-        skelTex.loadFromImage(skelImg);
-    }
-    
-    if (!invisTex.loadFromFile("Data/invisible.png")) {
+        skelTex.loadFromImage(skelImg);}    
+        if (!invisTex.loadFromFile("Data/invisible.png")) {
         Image invisImg;
         invisImg.create(32, 32, Color(150, 150, 255, 180));
-        invisTex.loadFromImage(invisImg);
-    }
-    
+        invisTex.loadFromImage(invisImg);}
     if (!chelnovTex.loadFromFile("Data/chelnov.png")) {
         Image chelnovImg;
         chelnovImg.create(32, 32, Color(255, 150, 150));
-        chelnovTex.loadFromImage(chelnovImg);
-    }
-    
+        chelnovTex.loadFromImage(chelnovImg);}
+    //drawing sprites using textures by assigning each sprite with a texture
     Sprite bgSprite(bgTex);
     Sprite bgSprite2(bgTex2);
     Sprite bgSprite3(bgTex3);
@@ -1513,50 +1486,43 @@ int main() {
     Sprite skelSprite(skelTex);
     Sprite invisSprite(invisTex);
     Sprite chelnovSprite(chelnovTex);
-    
+    //determines size of each sprite
     playerSprite.setScale(3, 3);
     ghostSprite.setScale(2, 2);
     skelSprite.setScale(2, 2);
     invisSprite.setScale(2, 2);
     chelnovSprite.setScale(2, 2);
-    
+    // decide origin point for all sprites
     playerSprite.setOrigin(16, 17);
     ghostSprite.setOrigin(16, 16);
     skelSprite.setOrigin(16, 16);
     invisSprite.setOrigin(16, 16);
     chelnovSprite.setOrigin(16, 16);
-
+//get music and set its loudness at 20 and loops it until level is completed or player dies
     Music lvlMusic, lvlMusic2, bossMusic;
-    
-    if (lvlMusic.openFromFile("Data/mus.ogg")) {
+     if (lvlMusic.openFromFile("Data/mus.ogg")) {
         lvlMusic.setVolume(20);
-        lvlMusic.setLoop(true);
-    }
-    
+        lvlMusic.setLoop(true);}    
     if (lvlMusic2.openFromFile("Data/mus.ogg")) {
         lvlMusic2.setVolume(20);
-        lvlMusic2.setLoop(true);
-    }
-    
+        lvlMusic2.setLoop(true);}    
     if (bossMusic.openFromFile("Data/mus.ogg")) {
         bossMusic.setVolume(25);
-        bossMusic.setLoop(true);
-    }
+        bossMusic.setLoop(true);}
 
     Font font;
     if (!font.loadFromFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")) {
         font.loadFromFile("C:/Windows/Fonts/arial.ttf");
     }
 
-    bool characterSelected = false;
+    bool characterSelected = false;//check if character has been selected
     Clock clock;
     Clock levelTimer;
-    float levelTime = 0;
+    float levelTime = 0;//time taken on level
     
     vector<LeaderboardEntry> leaderboard;
     loadLeaderboard(leaderboard);
 
-    // Main loop
     while (window.isOpen()) {
         float deltaTime = clock.restart().asSeconds();
         if (deltaTime > 0.1f) deltaTime = 0.1f;
@@ -1564,23 +1530,21 @@ int main() {
         Event ev;
         while (window.pollEvent(ev)) {
             if (ev.type == Event::Closed) 
-                window.close();
+                window.close();//closes window and stops the main loop
 
             if (ev.type == Event::KeyPressed) {
                 // Pause
                 if ((gameState.currentState == LEVEL1 || gameState.currentState == LEVEL2 || 
-                     gameState.currentState == BOSS_LEVEL) && ev.key.code == Keyboard::P) {
+                     gameState.currentState == BOSS_LEVEL) && ev.key.code == Keyboard::P) {//check if player is on a level or on menu if they are on a already paused level then restore it or esle pause it 
                     if (gameState.currentState == PAUSED) {
                         gameState.currentState = (gameState.currentLevel == 1) ? LEVEL1 : 
-                                                (gameState.currentLevel == 2) ? LEVEL2 : BOSS_LEVEL;
-                    } else {
-                        gameState.currentState = PAUSED;
-                    }
-                }
+                                                (gameState.currentLevel == 2) ? LEVEL2 : BOSS_LEVEL;}
+        else { gameState.currentState = PAUSED;}}
                 
                 // Character selection
-                if (gameState.currentState == MENU && !characterSelected) {
-                    if (ev.key.code == Keyboard::Num1) {
+                if (gameState.currentState == MENU && !characterSelected) {//check if no players is selected beforehand
+//check which number is selected then assign attributes of that character and starts the level , plays music , and creates ghosts and skeleton enemies 
+                    if (ev.key.code == Keyboard::Num1){
                         gameState.player.isYellow = true;
                         gameState.player.baseSpeed = 7.5f;
                         gameState.player.speed = 7.5f;
@@ -1608,7 +1572,7 @@ int main() {
                             e.velocityY = 0;
                             e.active = true;
                             e.stunned = false;
-                            e.direction = (i % 2 == 0) ? 1 : -1;
+                            e.direction = (i % 2 == 0) ? 1 : -1;//if number is odd that means enemy moves left if even then right
                             e.moveTimer = 0;
                             e.onGround = false;
                             addEnemy(gameState, e);
@@ -1660,8 +1624,7 @@ int main() {
                             e.direction = (i % 2 == 0) ? 1 : -1;
                             e.moveTimer = 0;
                             e.onGround = false;
-                            addEnemy(gameState, e);
-                        }
+                            addEnemy(gameState, e);}
                         for (int i = 0; i < 4; i++) {
                             Enemy e;
                             e.type = SKELETON;
@@ -1675,10 +1638,7 @@ int main() {
                             e.moveTimer = 0;
                             e.jumpTimer = 0;
                             e.onGround = false;
-                            addEnemy(gameState, e);
-                        }
-                    }
-                }
+                            addEnemy(gameState, e);}}}
 
                 // Shoot
                 if (ev.key.code == Keyboard::E && gameState.player.capturedCount > 0 && gameState.currentState != PAUSED) {
