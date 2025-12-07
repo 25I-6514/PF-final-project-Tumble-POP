@@ -1622,9 +1622,11 @@ int main() {
                         
                         if (lvlMusic.getStatus() != Music::Playing)
                             lvlMusic.play();
-                        
+
+                        // Setting the count of enemy
                         gameState.enemyCount = 0;
                         gameState.totalEnemiesInLevel = 12;
+                        // Loop for ghosts
                         for (int i = 0; i < 8; i++) {
                             Enemy e;
                             e.type = GHOST;
@@ -1639,6 +1641,7 @@ int main() {
                             e.onGround = false;
                             addEnemy(gameState, e);
                         }
+                        // Loop for skeletons
                         for (int i = 0; i < 4; i++) {
                             Enemy e;
                             e.type = SKELETON;
@@ -1655,6 +1658,7 @@ int main() {
                             addEnemy(gameState, e);
                         }
                     }
+//check which number is selected then assign attributes of that character and starts the level , plays music , and creates ghosts and skeleton enemies
                     else if (ev.key.code == Keyboard::Num2) {
                         gameState.player.isYellow = false;
                         gameState.player.baseSpeed = 5.0f;
@@ -1674,6 +1678,7 @@ int main() {
                         
                         gameState.enemyCount = 0;
                         gameState.totalEnemiesInLevel = 12;
+                        // Loop for ghosts
                         for (int i = 0; i < 8; i++) {
                             Enemy e;
                             e.type = GHOST;
@@ -1687,6 +1692,7 @@ int main() {
                             e.moveTimer = 0;
                             e.onGround = false;
                             addEnemy(gameState, e);}
+                        // Loop for skeletons
                         for (int i = 0; i < 4; i++) {
                             Enemy e;
                             e.type = SKELETON;
