@@ -594,268 +594,316 @@ void drawPlayer(RenderWindow& window, Player& p, Texture& playerTex, Sprite& pla
         dust.setPosition(p.x + (p.facingRight ? 10 : 70), p.y + 100);//takay dust(grey circle) player ky peechay aai
         window.draw(dust);}}
 
+// Function to update enemies movement
 void updateEnemies(GameStateData& gameState, char** lvl, float deltaTime) {
-    Player& p = gameState.player;
+Player& p = gameState.player;
     
-    for (int i = 0; i < gameState.enemyCount; i++) {
-        if (!gameState.enemies[i].active) continue;
-        
+  // Loop for all enemies
+   for (int i = 0; i < gameState.enemyCount; i++) {
+      if (!gameState.enemies[i].active) continue;
+        // Condition for when player is stunned
         if (gameState.enemies[i].stunned) {
-            gameState.enemies[i].stunnedTimer -= deltaTime;
+        // Timer for countdown
+          gameState.enemies[i].stunnedTimer -= deltaTime;
+            // Condition for removing stun
             if (gameState.enemies[i].stunnedTimer <= 0)
-                gameState.enemies[i].stunned = false;
-            continue;
-        }
+              gameState.enemies[i].stunned = false;
+              continue;
+            }
         
-        if (!gameState.enemies[i].onGround)
-            gameState.enemies[i].velocityY += GRAVITY * 0.5f;
+      // Condition to apply gravity when enemy is not on the ground 
+      if (!gameState.enemies[i].onGround)
+        gameState.enemies[i].velocityY += GRAVITY * 0.5f;
         if (gameState.enemies[i].velocityY > 15) gameState.enemies[i].velocityY = 15;
         
         gameState.enemies[i].y += gameState.enemies[i].velocityY;
         
-        int eBottom = (int)(gameState.enemies[i].y + 64) / CELL_SIZE;
-        int eLeft = (int)gameState.enemies[i].x / CELL_SIZE;
-        int eRight = (int)(gameState.enemies[i].x + 64) / CELL_SIZE;
+int eBottom = (int)(gameState.enemies[i].y + 64) / CELL_SIZE;
+int eLeft = (int)gameState.enemies[i].x / CELL_SIZE;
+int eRight = (int)(gameState.enemies[i].x + 64) / CELL_SIZE;
         
-        gameState.enemies[i].onGround = false;
-        if (eBottom >= 0 && eBottom < HEIGHT) {
-            if ((eLeft >= 0 && eLeft < WIDTH && lvl[eBottom][eLeft] == '#') ||
-                (eRight >= 0 && eRight < WIDTH && lvl[eBottom][eRight] == '#')) {
-                gameState.enemies[i].onGround = true;
-                gameState.enemies[i].y = eBottom * CELL_SIZE - 64;
-                gameState.enemies[i].velocityY = 0;
-            }
-        }
-        
-        switch (gameState.enemies[i].type) {
-            case GHOST:
-            case MINION:
-                gameState.enemies[i].x += gameState.enemies[i].velocityX * gameState.enemies[i].direction;
-                gameState.enemies[i].moveTimer += deltaTime;
+ // Check if the enemy has landed on the ground
+ gameState.enemies[i].onGround = false;
+ if (eBottom >= 0 && eBottom < HEIGHT) {
+   if ((eLeft >= 0 && eLeft < WIDTH && lvl[eBottom][eLeft] == '#') ||
+     (eRight >= 0 && eRight < WIDTH && lvl[eBottom][eRight] == '#')) {
+     gameState.enemies[i].onGround = true;
+     gameState.enemies[i].y = eBottom * CELL_SIZE - 64;
+     gameState.enemies[i].velocityY = 0;
+   }
+ }
+       
+ switch (gameState.enemies[i].type) {
+   case GHOST:
+   case MINION:
+   // Movement of the enemy (ghost and minion) and checks how longs it moves in the same direction
+   gameState.enemies[i].x += gameState.enemies[i].velocityX * gameState.enemies[i].direction;
+   gameState.enemies[i].moveTimer += deltaTime;
                 
-                if (gameState.enemies[i].moveTimer > 2.0f) {
-                    gameState.enemies[i].direction *= -1;
-                    gameState.enemies[i].moveTimer = 0;
-                }
-                
-                if (gameState.enemies[i].x < 30 || gameState.enemies[i].x > SCREEN_X - 100)
-                    gameState.enemies[i].direction *= -1;
-                break;
-                
-            case SKELETON:
-                gameState.enemies[i].x += gameState.enemies[i].velocityX * gameState.enemies[i].direction;
-                gameState.enemies[i].jumpTimer += deltaTime;
-                
-                if (gameState.enemies[i].jumpTimer > 3.0f && gameState.enemies[i].onGround) {
-                    gameState.enemies[i].velocityY = -15;
-                    gameState.enemies[i].jumpTimer = 0;
-                    gameState.enemies[i].onGround = false;
-                }
-                
-                if (gameState.enemies[i].x < 30 || gameState.enemies[i].x > SCREEN_X - 100)
-                    gameState.enemies[i].direction *= -1;
-                break;
-                
-            case INVISIBLE_MAN:
-                gameState.enemies[i].x += gameState.enemies[i].velocityX * gameState.enemies[i].direction;
-                gameState.enemies[i].invisTimer += deltaTime;
-                gameState.enemies[i].teleportTimer -= deltaTime;
-                
-                if (gameState.enemies[i].invisTimer > 3.0f && !gameState.enemies[i].invisible) {
-                    gameState.enemies[i].invisible = true;
-                    gameState.enemies[i].invisTimer = 0;
-                }
-                else if (gameState.enemies[i].invisTimer > 2.0f && gameState.enemies[i].invisible) {
-                    gameState.enemies[i].invisible = false;
-                    gameState.enemies[i].invisTimer = 0;
-                }
-                
-                if (gameState.enemies[i].teleportTimer <= 0) {
-                    gameState.enemies[i].x = 100 + rand() % (SCREEN_X - 200);
-                    gameState.enemies[i].y = 100 + rand() % 400;
-                    gameState.enemies[i].teleportTimer = 5.0f + rand() % 5;
-                    gameState.enemies[i].direction = (rand() % 2 == 0) ? 1 : -1;
-                }
-                
-                if (gameState.enemies[i].x < 30 || gameState.enemies[i].x > SCREEN_X - 100)
-                    gameState.enemies[i].direction *= -1;
-                break;
-                
-            case CHELNOV:
-                gameState.enemies[i].x += gameState.enemies[i].velocityX * gameState.enemies[i].direction;
-                gameState.enemies[i].shootTimer -= deltaTime;
-                
-                if (gameState.enemies[i].shootTimer <= 1.0f)
-                    gameState.enemies[i].canShoot = false;
-                
-                if (gameState.enemies[i].shootTimer <= 0) {
-                    gameState.enemies[i].canShoot = true;
-                    gameState.enemies[i].shootTimer = 4.0f;
-                    
-                    bool added = false;
-                    for (int j = 0; j < gameState.enemyProjectileCount; j++) {
-                        if (!gameState.enemyProjectiles[j].active) {
-                            gameState.enemyProjectiles[j].active = true;
-                            gameState.enemyProjectiles[j].x = gameState.enemies[i].x + 32;
-                            gameState.enemyProjectiles[j].y = gameState.enemies[i].y + 32;
-                            
-                            float dx = (p.x + 48) - gameState.enemyProjectiles[j].x;
-                            float dy = (p.y + 51) - gameState.enemyProjectiles[j].y;
-                            float dist = sqrt(dx*dx + dy*dy);
-                            gameState.enemyProjectiles[j].velocityX = (dx / dist) * 8;
-                            gameState.enemyProjectiles[j].velocityY = (dy / dist) * 8;
-                            added = true;
-                            break;
-                        }
-                    }
-                    
-                    if (!added && gameState.enemyProjectileCount < gameState.enemyProjectileCapacity) {
-                        gameState.enemyProjectiles[gameState.enemyProjectileCount].active = true;
-                        gameState.enemyProjectiles[gameState.enemyProjectileCount].x = gameState.enemies[i].x + 32;
-                        gameState.enemyProjectiles[gameState.enemyProjectileCount].y = gameState.enemies[i].y + 32;
-                        
-                        float dx = (p.x + 48) - gameState.enemyProjectiles[gameState.enemyProjectileCount].x;
-                        float dy = (p.y + 51) - gameState.enemyProjectiles[gameState.enemyProjectileCount].y;
-                        float dist = sqrt(dx*dx + dy*dy);
-                        gameState.enemyProjectiles[gameState.enemyProjectileCount].velocityX = (dx / dist) * 8;
-                        gameState.enemyProjectiles[gameState.enemyProjectileCount].velocityY = (dy / dist) * 8;
-                        gameState.enemyProjectileCount++;
-                    }
-                }
-                
-                if (gameState.enemies[i].x < 30 || gameState.enemies[i].x > SCREEN_X - 100)
-                    gameState.enemies[i].direction *= -1;
-                break;
-        }
-        
-        if (checkCollision(p.x, p.y, 96, 102, gameState.enemies[i].x, gameState.enemies[i].y, 64, 64)) {
-            if (!gameState.enemies[i].stunned) {
-                applyPenalty(gameState, 50, "Enemy touch");
-                p.health--;
-                p.damageTaken++;
-                gameState.enemies[i].x += gameState.enemies[i].direction * 80;
-                
-                if (p.health <= 0) {
-                    applyPenalty(gameState, 200, "Death");
-                    p.lives--;
-                    if (p.lives > 0) {
-                        p.health = 3;
-                        p.x = 300;
-                        p.y = 100;
-                    }
-                }
-            }
-        }
+    // Flips the direction after every 2 seconds
+    if (gameState.enemies[i].moveTimer > 2.0f) {
+      gameState.enemies[i].direction *= -1;
+      gameState.enemies[i].moveTimer = 0;
     }
-}
-
-void drawEnemies(RenderWindow& window, GameStateData& gameState, 
-                 Texture& ghostTex, Texture& skelTex, Texture& invisTex, Texture& chelnovTex,
-                 Sprite& ghostSprite, Sprite& skelSprite, Sprite& invisSprite, Sprite& chelnovSprite) {
-    for (int i = 0; i < gameState.enemyCount; i++) {
-        if (!gameState.enemies[i].active) continue;
-        
-        Sprite* enemySprite = nullptr;
-        
-        switch (gameState.enemies[i].type) {
-            case GHOST:
-            case MINION:
-                enemySprite = &ghostSprite;
-                break;
-            case SKELETON:
-                enemySprite = &skelSprite;
-                break;
-            case INVISIBLE_MAN:
-                enemySprite = &invisSprite;
-                break;
-            case CHELNOV:
-                enemySprite = &chelnovSprite;
-                break;
-        }
-        
-        if (!enemySprite) continue;
-        
-        if (gameState.enemies[i].type == INVISIBLE_MAN && gameState.enemies[i].invisible) {
-            enemySprite->setColor(Color(255, 255, 255, 80));
-        }
-        else if (gameState.enemies[i].stunned) {
-            enemySprite->setColor(Color(255, 255, 0, 180));
-        }
-        else if (gameState.enemies[i].type == CHELNOV && !gameState.enemies[i].canShoot) {
-            enemySprite->setColor(Color(255, 200, 200));
-        }
-        else if (gameState.enemies[i].type == MINION) {
-            enemySprite->setColor(Color(255, 200, 255));
-        }
-        else {
-            enemySprite->setColor(Color::White);
-        }
-        
-        int frame = (int)(gameState.enemies[i].moveTimer * 5) % 2;
-        IntRect textureRect(frame * 32, 0, 32, 32);
-        enemySprite->setTextureRect(textureRect);
-        
-        enemySprite->setPosition(gameState.enemies[i].x + 32, gameState.enemies[i].y + 32);
-        
-        if (gameState.enemies[i].direction < 0)
-            enemySprite->setScale(-2, 2);
-        else
-            enemySprite->setScale(2, 2);
+                
+      // Flips direction if it reaches to close to either side of the screen
+      if (gameState.enemies[i].x < 30 || gameState.enemies[i].x > SCREEN_X - 100)
+        gameState.enemies[i].direction *= -1;
+        break;
+                
+   case SKELETON:
+   // Movement of the enemy (ghost and minion) and checks how longs it walks jumping
+   gameState.enemies[i].x += gameState.enemies[i].velocityX * gameState.enemies[i].direction;
+   gameState.enemies[i].jumpTimer += deltaTime;
+                
+    // Reduces velocity and resets timer after every 3 seconds
+    if (gameState.enemies[i].jumpTimer > 3.0f && gameState.enemies[i].onGround) {
+      gameState.enemies[i].velocityY = -15;
+      gameState.enemies[i].jumpTimer = 0;
+      gameState.enemies[i].onGround = false;
+    }
+                
+      // Flips direction if it reaches to close to either side of the screen
+      if (gameState.enemies[i].x < 30 || gameState.enemies[i].x > SCREEN_X - 100)
+        gameState.enemies[i].direction *= -1;
+        break;
+                
+   case INVISIBLE_MAN:
+   // Movement of man and checks the time for which it becomes invisibe and teleports
+   gameState.enemies[i].x += gameState.enemies[i].velocityX * gameState.enemies[i].direction;
+   gameState.enemies[i].invisTimer += deltaTime;
+   gameState.enemies[i].teleportTimer -= deltaTime;
+     
+     // Makes man invisible after every 3 seconds of visibility and resets timer           
+     if (gameState.enemies[i].invisTimer > 3.0f && !gameState.enemies[i].invisible) {
+       gameState.enemies[i].invisible = true;
+       gameState.enemies[i].invisTimer = 0;
+     }
+       // Makes man visible after every 2 seconds of invisibility and resets timer
+       else if (gameState.enemies[i].invisTimer > 2.0f && gameState.enemies[i].invisible) {
+         gameState.enemies[i].invisible = false;
+         gameState.enemies[i].invisTimer = 0;
+     }
+         // Teleportation of man after timer becomes 0       
+         if (gameState.enemies[i].teleportTimer <= 0) {
+           gameState.enemies[i].x = 100 + rand() % (SCREEN_X - 200);
+           gameState.enemies[i].y = 100 + rand() % 400;
+           gameState.enemies[i].teleportTimer = 5.0f + rand() % 5;
+           gameState.enemies[i].direction = (rand() % 2 == 0) ? 1 : -1;
+         }
+           
+           // Flips direction if it reaches to close to either side of the screen     
+           if (gameState.enemies[i].x < 30 || gameState.enemies[i].x > SCREEN_X - 100)
+             gameState.enemies[i].direction *= -1;
+             break;
+                
+   case CHELNOV:
+   // Movement of the enemy (ghost and minion) and checks for how long it has been shooting
+   gameState.enemies[i].x += gameState.enemies[i].velocityX * gameState.enemies[i].direction;
+   gameState.enemies[i].shootTimer -= deltaTime;
+     
+     // Does not shoot if timer is less than 1           
+     if (gameState.enemies[i].shootTimer <= 1.0f)
+       gameState.enemies[i].canShoot = false;
+     
+     // Shoots if timer is greater than one and shoots after every 4 seconds           
+     if (gameState.enemies[i].shootTimer <= 0) {
+       gameState.enemies[i].canShoot = true;
+       gameState.enemies[i].shootTimer = 4.0f;
+                    
+       bool added = false;
+       // Loop for enemy projectiles
+       for (int j = 0; j < gameState.enemyProjectileCount; j++) {
+          // Reuse enemy projectile if not used before
+          if (!gameState.enemyProjectiles[j].active) {
+            gameState.enemyProjectiles[j].active = true;
+            gameState.enemyProjectiles[j].x = gameState.enemies[i].x + 32;
+            gameState.enemyProjectiles[j].y = gameState.enemies[i].y + 32;
             
-        window.draw(*enemySprite);
-    }
+            // Calculating direction of projectile            
+            float dx = (p.x + 48) - gameState.enemyProjectiles[j].x;
+            float dy = (p.y + 51) - gameState.enemyProjectiles[j].y;
+            float dist = sqrt(dx*dx + dy*dy);
+            gameState.enemyProjectiles[j].velocityX = (dx / dist) * 8;
+            gameState.enemyProjectiles[j].velocityY = (dy / dist) * 8;
+            added = true;
+            break;
+          }
+       }
+                    
+          // Creates new projectile if no inactive projectiles were available to be reused
+          if (!added && gameState.enemyProjectileCount < gameState.enemyProjectileCapacity) {
+            gameState.enemyProjectiles[gameState.enemyProjectileCount].active = true;
+            gameState.enemyProjectiles[gameState.enemyProjectileCount].x = gameState.enemies[i].x + 32;
+            gameState.enemyProjectiles[gameState.enemyProjectileCount].y = gameState.enemies[i].y + 32;
+            
+            // Calculating direction of the new projectile            
+            float dx = (p.x + 48) - gameState.enemyProjectiles[gameState.enemyProjectileCount].x;
+            float dy = (p.y + 51) - gameState.enemyProjectiles[gameState.enemyProjectileCount].y;
+            float dist = sqrt(dx*dx + dy*dy);
+            gameState.enemyProjectiles[gameState.enemyProjectileCount].velocityX = (dx / dist) * 8;
+            gameState.enemyProjectiles[gameState.enemyProjectileCount].velocityY = (dy / dist) * 8;
+            gameState.enemyProjectileCount++;
+          }
+     }
+     
+     // Flips direction if it reaches to close to either side of the screen           
+     if (gameState.enemies[i].x < 30 || gameState.enemies[i].x > SCREEN_X - 100)
+       gameState.enemies[i].direction *= -1;
+       break;
+ }
+      
+      // Checks health status of player  
+      if (checkCollision(p.x, p.y, 96, 102, gameState.enemies[i].x, gameState.enemies[i].y, 64, 64)) {
+         // Reduces life and increase damage if enemy is not stunned
+         if (!gameState.enemies[i].stunned) {
+          applyPenalty(gameState, 50, "Enemy touch");
+          p.health--;
+          p.damageTaken++;
+          gameState.enemies[i].x += gameState.enemies[i].direction * 80;
+            
+            // Player loses a life becomes 0 and gets penalty   
+            if (p.health <= 0) {
+              applyPenalty(gameState, 200, "Death");
+              p.lives--;
+               // Resets health and position to spawn if player has lives left
+               if (p.lives > 0) {
+                 p.health = 3;
+                 p.x = 300;
+                 p.y = 100;
+               }
+            }
+         }
+      }
+   }
 }
 
-void handleVacuum(GameStateData& gameState, float deltaTime) {
-    Player& p = gameState.player;
-    
-    for (int i = 0; i < gameState.enemyCount; i++) {
-        if (!gameState.enemies[i].active || gameState.enemies[i].stunned) continue;
+// Function to draw enemies on the screen
+void drawEnemies(RenderWindow& window, GameStateData& gameState, 
+Texture& ghostTex, Texture& skelTex, Texture& invisTex, Texture& chelnovTex,
+Sprite& ghostSprite, Sprite& skelSprite, Sprite& invisSprite, Sprite& chelnovSprite) {
+  // Loop for all enemies
+  for (int i = 0; i < gameState.enemyCount; i++) {
+     if (!gameState.enemies[i].active) continue;
         
+     Sprite* enemySprite = nullptr;
+  // Selects which sprite is to be used according to the enemy on the screen
+  switch (gameState.enemies[i].type) {
+    case GHOST:
+    case MINION:
+       enemySprite = &ghostSprite;
+       break;
+    case SKELETON:
+       enemySprite = &skelSprite;
+       break;
+    case INVISIBLE_MAN:
+       enemySprite = &invisSprite;
+       break;
+    case CHELNOV:
+       enemySprite = &chelnovSprite;
+       break;
+  }
+        
+  // If enemy sprite does not match, skip
+  if (!enemySprite) continue;
+        
+  // Sets color of each enemy according to its state
+  if (gameState.enemies[i].type == INVISIBLE_MAN && gameState.enemies[i].invisible) {
+    enemySprite->setColor(Color(255, 255, 255, 80));
+  }
+  else if (gameState.enemies[i].stunned) {
+    enemySprite->setColor(Color(255, 255, 0, 180));
+  }
+  else if (gameState.enemies[i].type == CHELNOV && !gameState.enemies[i].canShoot) {
+    enemySprite->setColor(Color(255, 200, 200));
+  }
+  else if (gameState.enemies[i].type == MINION) {
+    enemySprite->setColor(Color(255, 200, 255));
+  }
+  else {
+    enemySprite->setColor(Color::White);
+  }
+        
+// Movement of enemy with animation
+int frame = (int)(gameState.enemies[i].moveTimer * 5) % 2;
+IntRect textureRect(frame * 32, 0, 32, 32);
+enemySprite->setTextureRect(textureRect);
+
+// Sets the enemy's sprite position on the enemy on screen        
+enemySprite->setPosition(gameState.enemies[i].x + 32, gameState.enemies[i].y + 32);
+  
+  // Flips the sprite according to the position of the enemy      
+  if (gameState.enemies[i].direction < 0)
+    enemySprite->setScale(-2, 2);
+  else
+    enemySprite->setScale(2, 2);
+    
+    // Drawing the sprite        
+    window.draw(*enemySprite);
+  }
+}
+
+// Function to pull enemy towards player
+void handleVacuum(GameStateData& gameState, float deltaTime) {
+Player& p = gameState.player;
+    
+    // Loop for all enemies
+   for (int i = 0; i < gameState.enemyCount; i++) {
+      if (!gameState.enemies[i].active || gameState.enemies[i].stunned) continue;
+        
+        // Condition to skip Chelnov enemy when he cannot shoot
         if (gameState.enemies[i].type == CHELNOV && !gameState.enemies[i].canShoot)
             continue;
         
+        //Calculation of distance between enemy and player
         float dx = gameState.enemies[i].x - (p.x + 48);
         float dy = gameState.enemies[i].y - (p.y + 51);
         float distance = sqrt(dx*dx + dy*dy);
         
-        if (distance < p.vacuumRange * p.vacuumPower) {
-            float pullStrength = 4 * p.vacuumPower;
-            gameState.enemies[i].x -= (dx / distance) * pullStrength;
-            gameState.enemies[i].y -= (dy / distance) * pullStrength;
-            
-            if (distance < 40) {
-                if (p.capturedCount >= p.maxCapture) {
-                    int newCap = p.maxCapture + 2;
-                    Enemy* newCaptured = new Enemy[newCap];
-                    for (int j = 0; j < p.capturedCount; j++)
-                        newCaptured[j] = p.captured[j];
-                    delete[] p.captured;
-                    p.captured = newCaptured;
-                    p.maxCapture = newCap;
-                }
-                
-                p.captured[p.capturedCount] = gameState.enemies[i];
-                p.capturedCount++;
-                
-                switch (gameState.enemies[i].type) {
-                    case GHOST: p.score += 50; break;
-                    case SKELETON: p.score += 75; break;
-                    case INVISIBLE_MAN: p.score += 150; break;
-                    case CHELNOV: p.score += 200; break;
-                    case MINION: p.score += 100; break;
-                }
-                
-                gameState.enemies[i].active = false;
+      // Pull enemy if it is within the vacuum range
+      if (distance < p.vacuumRange * p.vacuumPower) {
+        float pullStrength = 4 * p.vacuumPower;
+        gameState.enemies[i].x -= (dx / distance) * pullStrength;
+        gameState.enemies[i].y -= (dy / distance) * pullStrength;
+          // Condition of whether the enemy is close enough to be captured  
+          if (distance < 40) {
+            // Increase the array of captured enemies if the previous one becomes full
+            if (p.capturedCount >= p.maxCapture) {
+               int newCap = p.maxCapture + 2;
+                Enemy* newCaptured = new Enemy[newCap];
+                for (int j = 0; j < p.capturedCount; j++)
+                   newCaptured[j] = p.captured[j];
+                   delete[] p.captured;
+                   p.captured = newCaptured;
+                   p.maxCapture = newCap;
             }
-        }
-    }
+            
+            // Enemy is added to the array of captured enemies    
+            p.captured[p.capturedCount] = gameState.enemies[i];
+            p.capturedCount++;
+            
+            // Increase in the player's score after the enemy is captured    
+            switch (gameState.enemies[i].type) {
+              case GHOST: p.score += 50; break;
+              case SKELETON: p.score += 75; break;
+              case INVISIBLE_MAN: p.score += 150; break;
+              case CHELNOV: p.score += 200; break;
+              case MINION: p.score += 100; break;
+            }
+            // Makes the enemy inactive when it is captured    
+            gameState.enemies[i].active = false;
+         }
+      }
+   }
 }
 
+// Function to shoot projectile by the player
 void shootProjectile(GameStateData& gameState) {
     Player& p = gameState.player;
+    // Condition to check captured enemies
     if (p.capturedCount == 0) return;
     
+    // Making a new projectile
     Projectile proj;
     proj.active = true;
     proj.x = p.x + 48;
@@ -866,6 +914,7 @@ void shootProjectile(GameStateData& gameState) {
     proj.isBallBreaker = false;
     proj.splitCount = 0;
     
+    // Calculation of the speed and direction of the new projectile
     float speed = 15;
     proj.velocityX = cos(p.vacuumAngle) * speed;
     proj.velocityY = sin(p.vacuumAngle) * speed;
@@ -876,253 +925,266 @@ void shootProjectile(GameStateData& gameState) {
     addProjectile(gameState, proj);
 }
 
+// Function to update the status of all active projectiles
 void updateProjectiles(GameStateData& gameState, char** lvl, float deltaTime) {
-    Player& p = gameState.player;
-    
-    for (int i = 0; i < gameState.projectileCount; i++) {
-        if (!gameState.projectiles[i].active) continue;
+Player& p = gameState.player;
+   // Loop for all active projectiles
+   for (int i = 0; i < gameState.projectileCount; i++) {
+     if (!gameState.projectiles[i].active) continue;
         
+        // Applying gravity on the falling projectile
         if (!gameState.projectiles[i].rollingOnGround) {
-            gameState.projectiles[i].x += gameState.projectiles[i].velocityX;
-            gameState.projectiles[i].y += gameState.projectiles[i].velocityY;
-            gameState.projectiles[i].velocityY += GRAVITY * 0.3f;
-            
+          gameState.projectiles[i].x += gameState.projectiles[i].velocityX;
+          gameState.projectiles[i].y += gameState.projectiles[i].velocityY;
+          gameState.projectiles[i].velocityY += GRAVITY * 0.3f;
+            // Projectile bounces from the edges of the screen if it is a BallBreaker projectile
             if (gameState.projectiles[i].isBallBreaker) {
                 if (gameState.projectiles[i].x < 0 || gameState.projectiles[i].x > SCREEN_X) {
-                    gameState.projectiles[i].velocityX *= -1;
-                    gameState.projectiles[i].bounces++;
-                    
+                  gameState.projectiles[i].velocityX *= -1;
+                  gameState.projectiles[i].bounces++;
+                    // Splits projectile into two new projectiles if it bounces once
                     if (gameState.projectiles[i].splitCount < 2 && gameState.projectiles[i].bounces == 1) {
-                        Projectile split1 = gameState.projectiles[i];
-                        split1.velocityX = gameState.projectiles[i].velocityX * 0.8f;
-                        split1.velocityY = -8;
-                        split1.splitCount++;
-                        addProjectile(gameState, split1);
+                      Projectile split1 = gameState.projectiles[i];
+                      split1.velocityX = gameState.projectiles[i].velocityX * 0.8f;
+                      split1.velocityY = -8;
+                      split1.splitCount++;
+                      addProjectile(gameState, split1);
                         
-                        Projectile split2 = gameState.projectiles[i];
-                        split2.velocityX = gameState.projectiles[i].velocityX * 1.2f;
-                        split2.velocityY = -5;
-                        split2.splitCount++;
-                        addProjectile(gameState, split2);
+                      Projectile split2 = gameState.projectiles[i];
+                      split2.velocityX = gameState.projectiles[i].velocityX * 1.2f;
+                      split2.velocityY = -5;
+                      split2.splitCount++;
+                      addProjectile(gameState, split2);
                     }
-                }
-            }
+               }
+          }
+        // Calculates the position of the projectile is on which tile
+        int pBottom = (int)(gameState.projectiles[i].y + 32) / CELL_SIZE;
+        int pLeft = (int)gameState.projectiles[i].x / CELL_SIZE;
+        int pRight = (int)(gameState.projectiles[i].x + 32) / CELL_SIZE;
+          // Projectile starts rolling if it hits the ground
+          if (pBottom >= 0 && pBottom < HEIGHT) {
+             if ((pLeft >= 0 && pLeft < WIDTH && (lvl[pBottom][pLeft] == '#' || lvl[pBottom][pLeft] == 'S')) ||
+             (pRight >= 0 && pRight < WIDTH && (lvl[pBottom][pRight] == '#' || lvl[pBottom][pRight] == 'S'))) {
+               gameState.projectiles[i].rollingOnGround = true;
+               gameState.projectiles[i].y = pBottom * CELL_SIZE - 32;
+               gameState.projectiles[i].velocityY = 0;
+               // Checking the direction of the horizontal rolling projectile 
+               if (gameState.projectiles[i].velocityX != 0)
+                 gameState.projectiles[i].rollDirection = (gameState.projectiles[i].velocityX > 0) ? 1 : -1;
+                 gameState.projectiles[i].velocityX = gameState.projectiles[i].rollDirection * 8;
+             }
+          }
+       }
+       else {
+         gameState.projectiles[i].x += gameState.projectiles[i].velocityX;
+         // Calculates the position of the projectile is on which tile
+         int pBottom = (int)(gameState.projectiles[i].y + 33) / CELL_SIZE;
+         int pLeft = (int)gameState.projectiles[i].x / CELL_SIZE;
+         int pRight = (int)(gameState.projectiles[i].x + 32) / CELL_SIZE;
             
-            int pBottom = (int)(gameState.projectiles[i].y + 32) / CELL_SIZE;
-            int pLeft = (int)gameState.projectiles[i].x / CELL_SIZE;
-            int pRight = (int)(gameState.projectiles[i].x + 32) / CELL_SIZE;
-            
-            if (pBottom >= 0 && pBottom < HEIGHT) {
-                if ((pLeft >= 0 && pLeft < WIDTH && (lvl[pBottom][pLeft] == '#' || lvl[pBottom][pLeft] == 'S')) ||
-                    (pRight >= 0 && pRight < WIDTH && (lvl[pBottom][pRight] == '#' || lvl[pBottom][pRight] == 'S'))) {
-                    gameState.projectiles[i].rollingOnGround = true;
-                    gameState.projectiles[i].y = pBottom * CELL_SIZE - 32;
-                    gameState.projectiles[i].velocityY = 0;
-                    if (gameState.projectiles[i].velocityX != 0)
-                        gameState.projectiles[i].rollDirection = (gameState.projectiles[i].velocityX > 0) ? 1 : -1;
-                    gameState.projectiles[i].velocityX = gameState.projectiles[i].rollDirection * 8;
-                }
-            }
+         bool stillOnGround = false;
+           // Checks the position of projectile on which tile
+           if (pBottom >= 0 && pBottom < HEIGHT) {
+             if ((pLeft >= 0 && pLeft < WIDTH && (lvl[pBottom][pLeft] == '#' || lvl[pBottom][pLeft] == 'S')) ||
+             (pRight >= 0 && pRight < WIDTH && (lvl[pBottom][pRight] == '#' || lvl[pBottom][pRight] == 'S'))) {
+                stillOnGround = true;
+             }
+           }
+           // Increases speed if the projectile has not fallen on the ground
+           if (!stillOnGround) {
+             gameState.projectiles[i].rollingOnGround = false;
+             gameState.projectiles[i].velocityY = 2;
+           }
         }
-        else {
-            gameState.projectiles[i].x += gameState.projectiles[i].velocityX;
-            
-            int pBottom = (int)(gameState.projectiles[i].y + 33) / CELL_SIZE;
-            int pLeft = (int)gameState.projectiles[i].x / CELL_SIZE;
-            int pRight = (int)(gameState.projectiles[i].x + 32) / CELL_SIZE;
-            
-            bool stillOnGround = false;
-            if (pBottom >= 0 && pBottom < HEIGHT) {
-                if ((pLeft >= 0 && pLeft < WIDTH && (lvl[pBottom][pLeft] == '#' || lvl[pBottom][pLeft] == 'S')) ||
-                    (pRight >= 0 && pRight < WIDTH && (lvl[pBottom][pRight] == '#' || lvl[pBottom][pRight] == 'S'))) {
-                    stillOnGround = true;
-                }
-            }
-            
-            if (!stillOnGround) {
-                gameState.projectiles[i].rollingOnGround = false;
-                gameState.projectiles[i].velocityY = 2;
-            }
-        }
-        
+        // Makes the projectile inactive if it goes off the screen
         if (gameState.projectiles[i].x < -50 || gameState.projectiles[i].x > SCREEN_X + 50 || 
-            gameState.projectiles[i].y > SCREEN_Y + 50) {
-            gameState.projectiles[i].active = false;
-            continue;
+          gameState.projectiles[i].y > SCREEN_Y + 50) {
+          gameState.projectiles[i].active = false;
+          continue;
         }
         
         int enemiesHit = 0;
+        // Loop for all enemies
         for (int j = 0; j < gameState.enemyCount; j++) {
             if (!gameState.enemies[j].active) continue;
-            
+            // Increment in enemies hit when a projectile hits an enemy
             if (checkCollision(gameState.projectiles[i].x, gameState.projectiles[i].y, 32, 32, 
-                              gameState.enemies[j].x, gameState.enemies[j].y, 64, 64)) {
-                enemiesHit++;
-                gameState.enemies[j].active = false;
-                p.enemiesDefeated++;
-                
-                int baseScore = 0;
-                switch (gameState.enemies[j].type) {
-                    case GHOST: baseScore = 100; break;
-                    case SKELETON: baseScore = 150; break;
-                    case INVISIBLE_MAN: baseScore = 300; break;
-                    case CHELNOV: baseScore = 400; break;
-                    case MINION: baseScore = 150; break;
-                }
-                
-                float multiplier = 1.0f;
-                if (p.combo >= 3 && p.combo <= 4) multiplier = 1.5f;
+            gameState.enemies[j].x, gameState.enemies[j].y, 64, 64)) {
+              enemiesHit++;
+              gameState.enemies[j].active = false;
+              p.enemiesDefeated++;
+              // Calculates scores of different enemies
+              int baseScore = 0;
+               switch (gameState.enemies[j].type) {
+                 case GHOST: baseScore = 100; break;
+                 case SKELETON: baseScore = 150; break;
+                 case INVISIBLE_MAN: baseScore = 300; break;
+                 case CHELNOV: baseScore = 400; break;
+                 case MINION: baseScore = 150; break;
+               }
+              // Multiplying the score if the player has hit the enemy multiple times
+              float multiplier = 1.0f;
+               if (p.combo >= 3 && p.combo <= 4) multiplier = 1.5f;
                 else if (p.combo >= 5) multiplier = 2.0f;
                 
-                p.score += (int)(baseScore * multiplier);
-                
+                 p.score += (int)(baseScore * multiplier);
+                // Spawning an enemy on random
                 if (rand() % 10 < 2) {
                     PowerUpType type = (PowerUpType)(rand() % 5);
                     spawnPowerUp(gameState, gameState.enemies[j].x, gameState.enemies[j].y, type);
                 }
             }
         }
-        
-        if (enemiesHit > 0) {
-            p.combo++;
-            p.comboTimer = 3.0f;
-            
-            if (enemiesHit >= 2)
-                p.score += (enemiesHit == 2) ? 200 : 500;
-            
-            if (!gameState.projectiles[i].isBallBreaker)
+      // Increase in score if enemies have been hit
+      if (enemiesHit > 0) {
+        p.combo++;
+        p.comboTimer = 3.0f;
+          // Bonus points for hitting 2 enemies
+          if (enemiesHit >= 2)
+            p.score += (enemiesHit == 2) ? 200 : 500;
+              // Making the projectile inactive if it is not a BallBreaker projectile
+              if (!gameState.projectiles[i].isBallBreaker)
                 gameState.projectiles[i].active = false;
-        }
-    }
+      }
+   }
 }
 
+// Function to update status of enemies projectiles
 void updateEnemyProjectiles(GameStateData& gameState, float deltaTime) {
-    Player& p = gameState.player;
-    
-    for (int i = 0; i < gameState.enemyProjectileCount; i++) {
-        if (!gameState.enemyProjectiles[i].active) continue;
-        
-        gameState.enemyProjectiles[i].x += gameState.enemyProjectiles[i].velocityX;
-        gameState.enemyProjectiles[i].y += gameState.enemyProjectiles[i].velocityY;
-        
+Player& p = gameState.player;
+   // Loop for all enemies
+   for (int i = 0; i < gameState.enemyProjectileCount; i++) {
+     if (!gameState.enemyProjectiles[i].active) continue;
+     // Movement of projectile
+       gameState.enemyProjectiles[i].x += gameState.enemyProjectiles[i].velocityX;
+       gameState.enemyProjectiles[i].y += gameState.enemyProjectiles[i].velocityY;
+        // Removing projectile if it goes off the screen
         if (gameState.enemyProjectiles[i].x < -50 || gameState.enemyProjectiles[i].x > SCREEN_X + 50 ||
-            gameState.enemyProjectiles[i].y < -50 || gameState.enemyProjectiles[i].y > SCREEN_Y + 50) {
-            gameState.enemyProjectiles[i].active = false;
-            continue;
+          gameState.enemyProjectiles[i].y < -50 || gameState.enemyProjectiles[i].y > SCREEN_Y + 50) {
+          gameState.enemyProjectiles[i].active = false;
+          continue;
         }
-        
-        if (checkCollision(gameState.enemyProjectiles[i].x, gameState.enemyProjectiles[i].y, 16, 16, p.x, p.y, 96, 102)) {
-            applyPenalty(gameState, 50, "Hit by projectile");
-            p.health--;
-            p.damageTaken++;
-            gameState.enemyProjectiles[i].active = false;
-            
-            if (p.health <= 0) {
-                applyPenalty(gameState, 200, "Death by projectile");
-                p.lives--;
-                if (p.lives > 0) {
-                    p.health = 3;
-                    p.x = 300;
-                    p.y = 100;
-                }
+      // Decrease health, increase damage and apply penalty to player if the enemy's projectile collides with the player
+      if (checkCollision(gameState.enemyProjectiles[i].x, gameState.enemyProjectiles[i].y, 16, 16, p.x, p.y, 96, 102)) {
+        applyPenalty(gameState, 50, "Hit by projectile");
+        p.health--;
+        p.damageTaken++;
+        gameState.enemyProjectiles[i].active = false;
+         // Apply penalty and reduce lives if player loses a life   
+         if (p.health <= 0) {
+           applyPenalty(gameState, 200, "Death by projectile");
+           p.lives--;
+           // Resets lives and location to spawn if player still has lives left
+            if (p.lives > 0) {
+              p.health = 3;
+              p.x = 300;
+              p.y = 100;
             }
-        }
-    }
+         }
+      }
+   }
 }
-
+// Function to spawn power up
 void spawnPowerUp(GameStateData& gameState, float x, float y, PowerUpType type) {
-    for (int i = 0; i < gameState.powerupCount; i++) {
-        if (!gameState.powerups[i].active) {
-            gameState.powerups[i].active = true;
-            gameState.powerups[i].x = x;
-            gameState.powerups[i].y = y;
-            gameState.powerups[i].timer = 10.0f;
-            gameState.powerups[i].type = type;
-            return;
-        }
+ // Loop for all active power ups
+ for (int i = 0; i < gameState.powerupCount; i++) {
+    // Activating an inactive power up if available
+    if (!gameState.powerups[i].active) {
+      gameState.powerups[i].active = true;
+      gameState.powerups[i].x = x;
+      gameState.powerups[i].y = y;
+      gameState.powerups[i].timer = 10.0f;
+      gameState.powerups[i].type = type;
+      return;
     }
-    
+ }
+    // Creates a new power up if no inactive power ups are available
     if (gameState.powerupCount < gameState.powerupCapacity) {
-        gameState.powerups[gameState.powerupCount].active = true;
-        gameState.powerups[gameState.powerupCount].x = x;
-        gameState.powerups[gameState.powerupCount].y = y;
-        gameState.powerups[gameState.powerupCount].timer = 10.0f;
-        gameState.powerups[gameState.powerupCount].type = type;
-        gameState.powerupCount++;
+      gameState.powerups[gameState.powerupCount].active = true;
+      gameState.powerups[gameState.powerupCount].x = x;
+      gameState.powerups[gameState.powerupCount].y = y;
+      gameState.powerups[gameState.powerupCount].timer = 10.0f;
+      gameState.powerups[gameState.powerupCount].type = type;
+      gameState.powerupCount++;
     }
 }
-
+// Function to update the status of power ups
 void updatePowerUps(GameStateData& gameState, float deltaTime) {
-    Player& p = gameState.player;
-    
-    for (int i = 0; i < gameState.powerupCount; i++) {
+Player& p = gameState.player;
+   // Loop for all active power ups 
+   for (int i = 0; i < gameState.powerupCount; i++) {
         if (!gameState.powerups[i].active) continue;
-        
+        // Timer to countdown of the power up
         gameState.powerups[i].timer -= deltaTime;
         if (gameState.powerups[i].timer <= 0) {
             gameState.powerups[i].active = false;
             continue;
         }
-        
-        if (checkCollision(gameState.powerups[i].x, gameState.powerups[i].y, 32, 32, p.x, p.y, 96, 102)) {
-            switch (gameState.powerups[i].type) {
-                case SPEED:
-                    p.speed = p.baseSpeed * 2;
-                    p.speedBoostTimer = 15.0f;
-                    break;
-                case RANGE:
-                    p.vacuumRange = p.baseVacuumRange * 1.5f;
-                    p.rangeBoostTimer = 15.0f;
-                    break;
-                case POWER:
-                    p.vacuumPower *= 1.5f;
-                    p.powerBoostTimer = 15.0f;
-                    break;
-                case EXTRA_LIFE:
-                    p.lives++;
-                    break;
-                case BALL_BREAKER:
-                    for (int j = 0; j < gameState.projectileCount; j++) {
-                        if (gameState.projectiles[j].active && !gameState.projectiles[j].isBallBreaker) {
-                            gameState.projectiles[j].isBallBreaker = true;
-                            break;
-                        }
-                    }
-                    break;
-            }
-            
-            gameState.powerups[i].active = false;
-        }
-    }
-}
-void drawPowerUps(RenderWindow& window, GameStateData& gameState) {
-    for (int i = 0; i < gameState.powerupCount; i++) {
-        if (!gameState.powerups[i].active) continue;
-        
-        RectangleShape powerupRect(Vector2f(32, 32));
-        switch (gameState.powerups[i].type) {
+      // Condition to check if the power up collides with the player  
+      if (checkCollision(gameState.powerups[i].x, gameState.powerups[i].y, 32, 32, p.x, p.y, 96, 102)) {
+          // Increases characteristics
+          switch (gameState.powerups[i].type) {
             case SPEED:
-                powerupRect.setFillColor(Color::Yellow);
-                break;
+              p.speed = p.baseSpeed * 2;
+              p.speedBoostTimer = 15.0f;
+              break;
             case RANGE:
-                powerupRect.setFillColor(Color::Cyan);
-                break;
+              p.vacuumRange = p.baseVacuumRange * 1.5f;
+              p.rangeBoostTimer = 15.0f;
+              break;
             case POWER:
-                powerupRect.setFillColor(Color::Magenta);
-                break;
+               p.vacuumPower *= 1.5f;
+               p.powerBoostTimer = 15.0f;
+               break;
             case EXTRA_LIFE:
-                powerupRect.setFillColor(Color::Green);
+                p.lives++;
                 break;
             case BALL_BREAKER:
-                powerupRect.setFillColor(Color(255, 100, 255));
+                for (int j = 0; j < gameState.projectileCount; j++) {
+                   // On getting power up, converts a porjectile into a BallBreaker projectile
+                   if (gameState.projectiles[j].active && !gameState.projectiles[j].isBallBreaker) {
+                     gameState.projectiles[j].isBallBreaker = true;
+                     break;
+                   }
+                }
                 break;
-        }
-        
+         }
+         // Deactivates power up after it being used   
+         gameState.powerups[i].active = false;
+      }
+   }
+}
+// Function to draw power ups
+void drawPowerUps(RenderWindow& window, GameStateData& gameState) {
+   // Loop for all active power ups
+   for (int i = 0; i < gameState.powerupCount; i++) {
+      if (!gameState.powerups[i].active) continue;
+      // Makes a rectangle for a power up  
+      RectangleShape powerupRect(Vector2f(32, 32));
+       // Change of colors according to the power up
+       switch (gameState.powerups[i].type) {
+         case SPEED:
+            powerupRect.setFillColor(Color::Yellow);
+            break;
+         case RANGE:
+            powerupRect.setFillColor(Color::Cyan);
+            break;
+         case POWER:
+            powerupRect.setFillColor(Color::Magenta);
+            break;
+         case EXTRA_LIFE:
+            powerupRect.setFillColor(Color::Green);
+            break;
+         case BALL_BREAKER:
+            powerupRect.setFillColor(Color(255, 100, 255));
+            break;
+       }
+        // Fixing the postion of the rectangle
         powerupRect.setPosition(gameState.powerups[i].x, gameState.powerups[i].y);
         window.draw(powerupRect);
-    }
+   }
 }
-
 void updateBoss(GameStateData& gameState, float deltaTime) {
     Boss& boss = gameState.boss;
     Player& p = gameState.player;
